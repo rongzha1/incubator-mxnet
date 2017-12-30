@@ -50,9 +50,11 @@ endif
 include mshadow/make/mshadow.mk
 include $(DMLC_CORE)/make/dmlc.mk
 
+CXX=clang++
+
 # all tge possible warning tread
 WARNFLAGS= -Wall -Wsign-compare
-CFLAGS = -DMSHADOW_FORCE_STREAM $(WARNFLAGS)
+CFLAGS = -DMSHADOW_FORCE_STREAM $(WARNFLAGS) -fsanitize=address -fno-omit-frame-pointer
 
 ifeq ($(DEV), 1)
 	CFLAGS += -g -Werror
@@ -66,7 +68,7 @@ else
 	CFLAGS += -O3 -DNDEBUG=1
 endif
 CFLAGS += -I$(ROOTDIR)/mshadow/ -I$(ROOTDIR)/dmlc-core/include -fPIC -I$(NNVM_PATH)/include -I$(DLPACK_PATH)/include -Iinclude $(MSHADOW_CFLAGS)
-LDFLAGS = -pthread $(MSHADOW_LDFLAGS) $(DMLC_LDFLAGS)
+LDFLAGS = -fsanitize=address -fno-omit-frame-pointer -shared-libasan -lasan -lubsan -lLLVM $(MSHADOW_LDFLAGS) $(DMLC_LDFLAGS) -pthread
 ifeq ($(DEBUG), 1)
 	NVCCFLAGS += -std=c++11 -Xcompiler -D_FORCE_INLINES -g -G -O0 -ccbin $(CXX) $(MSHADOW_NVCCFLAGS)
 else
