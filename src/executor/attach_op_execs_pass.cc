@@ -30,6 +30,7 @@
 #include "../common/utils.h"
 #include "../common/exec_utils.h"
 #include "./exec_pass.h"
+#include "../operator/nn/mkldnn/mkldnn_utils.h"
 
 namespace mxnet {
 
@@ -38,6 +39,8 @@ const OperatorProperty* OpPropGetOpProperty(const NodeAttrs& attrs);
 }  // namespace op
 
 namespace exec {
+
+static TimeCount op_count("op");
 
 // abstract OpExecutor which provides storage fallback procedure on
 // non-default inputs and outputs
@@ -71,6 +74,7 @@ class StorageFallbackOpExecutor : public OpExecutor {
 
   // storage fallback before fcompute is launched
   void PreFCompute(bool is_gpu) {
+    op_count.Start("pre");
     using namespace common;
     InitBlobs();
     in_data_.clear(); out_data_.clear();
@@ -83,11 +87,14 @@ class StorageFallbackOpExecutor : public OpExecutor {
                            &post_temp_src_, &post_temp_dst_,
                            &in_temp_idx_map_, mutate_idx_);
     common::CastNonDefaultStorage(pre_temp_src_, pre_temp_dst_, op_ctx, is_gpu);
+    op_count.End("pre");
   }
 
   // storage fallback after fcompute is completed
   void PostFCompute(bool is_gpu) {
+    op_count.Start("post");
     common::CastNonDefaultStorage(post_temp_src_, post_temp_dst_, op_ctx, is_gpu);
+    op_count.End("post");
   }
 
   // default storage tensor blobs for fcompute
@@ -113,7 +120,9 @@ class StatefulComputeExecutor : public StorageFallbackOpExecutor {
   void Run(RunContext rctx, bool is_gpu) override {
     op_ctx.run_ctx = rctx;
     PreFCompute(is_gpu);
+    op_count.Start("stateful");
     fcompute_(state_, op_ctx, in_data_, req, out_data_);
+    op_count.End("stateful");
     PostFCompute(is_gpu);
   }
 
@@ -145,7 +154,9 @@ class StatefulComputeExExecutor : public OpExecutor {
  public:
   void Run(RunContext rctx, bool is_gpu) override {
     op_ctx.run_ctx = rctx;
+    op_count.Start("statefulEx");
     fcompute_(state_, op_ctx, in_array, req, out_array);
+    op_count.End("statefulEx");
   }
 
   void Setup() override {}
@@ -178,7 +189,9 @@ class FComputeExecutor : public StorageFallbackOpExecutor {
     using namespace common;
     op_ctx.run_ctx = rctx;
     PreFCompute(is_gpu);
+    op_count.Start(attrs_.op->name);
     fcompute_(attrs_, op_ctx, in_data_, req, out_data_);
+    op_count.End(attrs_.op->name);
     PostFCompute(is_gpu);
   }
 
@@ -203,7 +216,9 @@ class FComputeExExecutor : public OpExecutor {
  public:
   void Run(RunContext rctx, bool is_gpu) override {
     op_ctx.run_ctx = rctx;
+    op_count.Start(attrs_.op->name);
     fcompute_(attrs_, op_ctx, in_array, req, out_array);
+    op_count.End(attrs_.op->name);
   }
 
   void Setup() override {}
