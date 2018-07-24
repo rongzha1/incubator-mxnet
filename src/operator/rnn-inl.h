@@ -270,14 +270,15 @@ void RNNForwardInference(DType* ws,
                          int mode) {
   switch (mode) {
     case rnn_enum::kLstm:
-      LstmForwardInference<DType>(ws, state_outputs, num_layers, direction, seq_length,
+      LstmForwardInference_int8<DType>(ws, state_outputs, num_layers, direction, seq_length,
                                   batch_size, input_size, state_size, x_ptr, hx_ptr, cx_ptr,
                                   w_ptr, b_ptr, y_ptr, hy_ptr, cy_ptr);
       break;
     case rnn_enum::kGru:
-      GruForwardInference<DType>(ws, state_outputs, num_layers, direction, seq_length,
+      GruForwardInference_int8<DType>(ws, state_outputs, num_layers, direction, seq_length,
                                  batch_size, input_size, state_size, x_ptr, hx_ptr,
                                  w_ptr, y_ptr, hy_ptr);
+
       break;
     case rnn_enum::kRnnTanh:
     case rnn_enum::kRnnRelu:
@@ -428,7 +429,6 @@ class RNNOp : public Operator{
         reserve_space_size_ = r_size;
         init_space_ = true;
       }
-
       DType* reserve_space_ptr = static_cast<DType*>(reserve_space_.dptr);
       RNNForwardTraining<DType>(workspace.dptr_,
                                 reserve_space_ptr,

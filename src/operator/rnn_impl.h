@@ -26,6 +26,7 @@
 #ifndef MXNET_OPERATOR_RNN_IMPL_H_
 #define MXNET_OPERATOR_RNN_IMPL_H_
 
+#include <mkl.h>
 #include <dmlc/logging.h>
 #include <dmlc/parameter.h>
 #include <mxnet/operator.h>
@@ -52,6 +53,29 @@ inline DType sigmoid(DType x) {
 template<typename DType>
 inline DType relu(DType x) {
   return x > 0.0f ? static_cast<float>(x) : 0.0f;
+}
+
+template<typename DType>
+inline DType getmax(DType* x, size_t size) {
+  float min = x[0];
+  float max = x[0];
+  float ret = 1.0f;
+  if (size > 1) {
+    for (size_t i = 1; i < size; i++) {
+      if (x[i] > max) {
+        max = x[i];
+      }
+      if (x[i] < min) {
+       min = x[i];
+     }
+    }
+  }
+  if (fabs(max) > fabs(min)) {
+    ret = fabs(max) == 0.0f ? 1.0f : fabs(max);
+  } else {
+    ret = fabs(min) == 0.0f ? 1.0f : fabs(min);
+  }
+  return ret;
 }
 
 template<typename DType>
@@ -308,6 +332,265 @@ void LstmForwardInference(DType* ws,
         cy_ptr += cell_size;
       }
       LstmForwardInferenceSingleLayer<DType>(ws, state_outputs, true, T, N, input_size, H,
+                                             x, hx[idx], cx[idx], y, w_ptr, b_ptr, hy_ptr, cy_ptr);
+    }
+    // Don't need to move pointer in the last layer.
+    if (i != L - 1) {
+      w_ptr += w_size;
+      b_ptr += b_size;
+      x_ptr = y_cur_ptr;
+      ++idx;
+      if (state_outputs) {
+        hy_ptr += cell_size;
+        cy_ptr += cell_size;
+      }
+    }
+  }
+}
+
+template<typename DType>
+void LstmForwardInferenceSingleLayer_int8(DType* ws,
+                                     bool state_outputs,
+                                     bool bid,
+                                     const int T,
+                                     const int N,
+                                     const int I,
+                                     const int H,
+                                     const Tensor<cpu, 2, DType> &x,
+                                     const Tensor<cpu, 2, DType> &hx,
+                                     const Tensor<cpu, 2, DType> &cx,
+                                     const Tensor<cpu, 3, DType> &y,
+                                     DType* w_ptr,
+                                     DType* b_ptr,
+                                     DType* hy_ptr,
+                                     DType* cy_ptr) {
+  using namespace mshadow;
+  const Tensor<cpu, 2, DType> wx(w_ptr, Shape2(H * 4, I));
+  const Tensor<cpu, 2, DType> wh(w_ptr + I * H * 4, Shape2(H * 4, H));
+  const Tensor<cpu, 2, DType> bx(b_ptr, Shape2(4, H));
+  const Tensor<cpu, 2, DType> bh(b_ptr + H * 4, Shape2(4, H));
+  Tensor<cpu, 2, DType> yx_flat(ws, Shape2(T * N, H * 4));
+  Tensor<cpu, 2, DType> yh_flat(ws + T * N * H * 4, Shape2(N, H * 4));
+  const Tensor<cpu, 4, DType> yx(yx_flat.dptr_, Shape4(T, N, 4, H));
+  const Tensor<cpu, 3, DType> yh(yh_flat.dptr_, Shape3(N, 4, H));
+  Tensor<cpu, 2, DType> h(yh_flat.dptr_ + N * H * 4, Shape2(N, H));
+  Tensor<cpu, 2, DType> c(h.dptr_ + N * H, Shape2(N, H));
+  const int offset = bid ? H : 0;
+  const DType alpha = 1.0;
+  const DType beta = 0.0;
+  const int cell_size = N * H;
+  const int omp_threads = mxnet::engine::OpenMP::Get()->GetRecommendedOMPThreadCount();
+
+  MKL_INT  ao = 0, bo = 0;
+  float factor_x = 63 / getmax(x.dptr_, T * N * I);
+  float factor_wx = 127 / getmax(wx.dptr_, 4 * H * I);
+  float factor_wh = 127 / getmax(wh.dptr_, 4 * H * H);
+  float foffset = 0.5;
+
+  MKL_INT8* x_int8 = reinterpret_cast<MKL_INT8* > (mkl_calloc(T * N * I, sizeof(MKL_INT8), 64));
+  MKL_INT8* wx_int8 = reinterpret_cast<MKL_INT8* > (mkl_calloc(4 * H * I, sizeof(MKL_INT8), 64));
+  MKL_INT8* wh_int8 = reinterpret_cast<MKL_INT8* > (mkl_calloc(4 * H * H, sizeof(MKL_INT8), 64));
+  MKL_INT32* wx_sum_int8 = reinterpret_cast<MKL_INT32* > (mkl_calloc(4 * H, sizeof(MKL_INT32), 64));
+  MKL_INT32* wh_sum_int8 = reinterpret_cast<MKL_INT32* > (mkl_calloc(4 * H, sizeof(MKL_INT32), 64));
+  MKL_INT8* h_int8 = reinterpret_cast<MKL_INT8* > (mkl_calloc(N * H, sizeof(MKL_INT8), 64));
+  MKL_INT32* yx_flat_int8 = reinterpret_cast<MKL_INT32* >
+      (mkl_calloc(T * N * 4 * H, sizeof(MKL_INT32), 64));
+  MKL_INT32* yh_flat_int8 = reinterpret_cast<MKL_INT32* >
+      (mkl_calloc(N * 4 * H, sizeof(MKL_INT32), 64));
+
+  // scale x
+  #pragma omp parallel for num_threads(omp_threads)
+  for (int i = 0; i < T * N; ++i) {
+    for (int j = 0; j < I; ++j) {
+      if (x[i][j] > 0) {
+        foffset = 0.5;
+      } else if (x[i][j]  == 0) {
+        foffset = 0.0;
+      } else {
+        foffset = -0.5;
+      }
+      x_int8[i * I + j] = (MKL_INT8) (x[i][j] * factor_x + foffset) + 64;  //  ensure x >= 0
+    }
+  }
+  // scale wx
+  #pragma omp parallel for num_threads(omp_threads)
+  for (int i = 0; i < 4 * H; ++i) {
+    for (int j = 0; j < I; ++j) {
+      if (wx[i][j] > 0) {
+        foffset = 0.5;
+      } else if (wx[i][j]  == 0) {
+        foffset = 0.0;
+      } else {
+        foffset = -0.5;
+      }
+      wx_int8[i * I + j] = (MKL_INT8)(wx[i][j] * factor_wx + foffset);
+    }
+  }
+
+  // scale wh
+  #pragma omp parallel for num_threads(omp_threads)
+  for (int i = 0; i < 4 * H; ++i) {
+    for (int j = 0; j < H; ++j) {
+      if (wh[i][j] > 0) {
+        foffset = 0.5;
+      } else if (wh[i][j]  == 0) {
+        foffset = 0.0;
+      } else {
+        foffset = -0.5;
+      }
+      wh_int8[i * H + j] = (MKL_INT8)(wh[i][j] * factor_wh + foffset);
+    }
+  }
+
+  //  prepare sum data for wh
+  #pragma omp parallel for num_threads(omp_threads)
+  for (int i = 0; i < 4 * H; ++i) {
+    wh_sum_int8[i] = 0;
+    for (int j = 0; j < H; ++j) {
+      wh_sum_int8[i] += (-64) * wh_int8[i * H + j];
+    }
+  }
+
+  //  prepare sum data for wx
+  #pragma omp parallel for num_threads(omp_threads)
+  for (int i = 0; i < 4 * H; ++i) {
+    wx_sum_int8[i] = 0;
+    for (int j = 0; j < I; ++j) {
+      wx_sum_int8[i] += (-64) * wx_int8[i * I + j];
+    }
+  }
+  //  linalg_gemm(x, wx, yx_flat, alpha, beta, false, true);
+  cblas_gemm_s8u8s32(CblasRowMajor, CblasNoTrans, CblasTrans, CblasRowOffset,
+      N * T, 4 * H, I, alpha, x_int8, I, ao, wx_int8, I, bo, beta,
+      yx_flat_int8, 4 * H, wx_sum_int8);
+  // scale back gemmC1
+  #pragma omp parallel for num_threads(omp_threads)
+  for (int i = 0; i < T * N; ++i) {
+    for (int j = 0; j < 4 * H; ++j) {
+      yx_flat[i][j] = yx_flat_int8[i * 4 * H + j] / (factor_x * factor_wx);  //  float
+    }
+  }
+
+  for (int i = 0; i < T; ++i) {
+    int t = bid ? T - 1 - i : i;
+/*
+    linalg_gemm(i ? h : hx, wh, yh_flat, alpha, beta, false, true);
+    for (int i = 0; i < 5; i ++) {
+      LOG(INFO) << "yh_flat.dptr_[" << i << "]:" << yh_flat.dptr_[i];
+    }
+*/
+
+    DType* ht_1 = i ? h.dptr_ : hx.dptr_;
+    float factor_ht_1 = 63 / getmax(ht_1, N * H);
+    #pragma omp parallel for num_threads(omp_threads)
+    for (int i = 0; i < N; ++i) {
+      for (int j = 0; j < H; ++j) {
+        if (ht_1[i * H + j] > 0) {
+          foffset = 0.5;
+        } else if (ht_1[i * H + j] == 0) {
+          foffset = 0.0;
+        } else {
+          foffset = -0.5;
+        }
+        h_int8[i * H + j] = (MKL_INT8)(ht_1[i * H + j] * factor_ht_1
+            + foffset) + 64;  //  ensure ht_1 >= 0
+      }
+    }
+
+
+    cblas_gemm_s8u8s32(CblasRowMajor, CblasNoTrans, CblasTrans,
+        CblasRowOffset, N, 4 * H, H, alpha, h_int8, H, ao,
+        wh_int8, H, bo, beta, yh_flat_int8, 4 * H, wh_sum_int8);
+
+    // scale back gemmC2
+
+    #pragma omp parallel for num_threads(omp_threads)
+    for (int i = 0; i < N; ++i) {
+      for (int j = 0; j < 4 * H; ++j) {
+        yh_flat[i][j] = yh_flat_int8[i * 4 * H + j] / (factor_wh * factor_ht_1);
+      }
+    }
+
+    #pragma omp parallel for num_threads(omp_threads)
+    for (int jk = 0; jk < cell_size; ++jk) {
+      int j = jk / H;
+      int k = jk % H;
+      DType it = sigmoid<DType>(yx[t][j][0][k] + yh[j][0][k] + bx[0][k] + bh[0][k]);
+      DType ft = sigmoid<DType>(yx[t][j][1][k] + yh[j][1][k] + bx[1][k] + bh[1][k]);
+      DType gt =           tanh(yx[t][j][2][k] + yh[j][2][k] + bx[2][k] + bh[2][k]);
+      DType ot = sigmoid<DType>(yx[t][j][3][k] + yh[j][3][k] + bx[3][k] + bh[3][k]);
+      DType ct = (i ? c[j][k] : cx[j][k]) * ft + it * gt;
+      DType ht = ot * tanh(ct);
+      y[t][j][k + offset] = ht;
+      if (i == T - 1 && state_outputs) {
+        hy_ptr[jk] = ht;
+        cy_ptr[jk] = ct;
+      } else {
+        h[j][k] = ht;
+        c[j][k] = ct;
+      }
+    }
+  }
+
+  mkl_free(x_int8);
+  mkl_free(wx_int8);
+  mkl_free(wh_int8);
+  mkl_free(wx_sum_int8);
+  mkl_free(wh_sum_int8);
+  mkl_free(yx_flat_int8);
+  mkl_free(yh_flat_int8);
+  mkl_free(h_int8);
+
+}
+
+template <typename DType>
+void LstmForwardInference_int8(DType* ws,
+                          bool state_outputs,
+                          const int L,
+                          const int D,
+                          const int T,
+                          const int N,
+                          const int I,
+                          const int H,
+                          DType* x_ptr,
+                          DType* hx_ptr,
+                          DType* cx_ptr,
+                          DType* w_ptr,
+                          DType* b_ptr,
+                          DType* y_ptr,
+                          DType* hy_ptr,
+                          DType* cy_ptr) {
+  const int total_layers = D * L;
+  Tensor<cpu, 3, DType> hx(hx_ptr, Shape3(total_layers, N, H));
+  Tensor<cpu, 3, DType> cx(cx_ptr, Shape3(total_layers, N, H));
+  const int b_size = 2 * H * 4;
+  const int cell_size = N * H;
+  DType* y_tmp_ptr = ws + (T + 1) * cell_size * 4 + cell_size * 2;
+  DType* y_cur_ptr = y_ptr;
+  int idx = 0;  // state & cell state's idx;
+  bool flag = L % 2 ? false : true;
+  for (int i = 0; i < L; ++i) {
+    const int input_size = i ? H * D : I;
+    const int w_size = (input_size + H) * H * 4;
+    // If bidirectional, need space to save current layer output y.
+    if (D == 2) {
+      y_cur_ptr = flag ? y_tmp_ptr : y_ptr;
+      flag = !flag;
+    }
+    Tensor<cpu, 2, DType> x(x_ptr, Shape2(T * N, input_size));
+    Tensor<cpu, 3, DType> y(y_cur_ptr, Shape3(T, N, H * D));
+    LstmForwardInferenceSingleLayer_int8<DType>(ws, state_outputs, false, T, N, input_size, H,
+                                           x, hx[idx], cx[idx], y, w_ptr, b_ptr, hy_ptr, cy_ptr);
+    // If bidirectional, then calculate the reverse direction's forward result.
+    if (D == 2) {
+      w_ptr += w_size;
+      b_ptr += b_size;
+      ++idx;
+      if (state_outputs) {
+        hy_ptr += cell_size;
+        cy_ptr += cell_size;
+      }
+      LstmForwardInferenceSingleLayer_int8<DType>(ws, state_outputs, true, T, N, input_size, H,
                                              x, hx[idx], cx[idx], y, w_ptr, b_ptr, hy_ptr, cy_ptr);
     }
     // Don't need to move pointer in the last layer.
@@ -585,6 +868,533 @@ void LstmBackward(DType* ws,
 }
 
 template<typename DType>
+void GruForwardInferenceSingleLayer_int8(DType* ws,
+                                         DType* tmp_buf,
+                                         bool state_outputs,
+                                         const int D,
+                                         const int T,
+                                         const int N,
+                                         const int I,
+                                         const int H,
+                                         const Tensor<cpu, 2, DType> &x,
+                                         const Tensor<cpu, 2, DType> &hx,
+                                         DType* wx_ptr,
+                                         DType* wh_ptr,
+                                         DType* bx_ptr,
+                                         DType* bh_ptr,
+                                         DType* y_ptr,
+                                         DType* hy_ptr) {
+  DType* ht = y_ptr;
+  DType* ht_1 = y_ptr;
+  DType* back_ht_1 = y_ptr + (T-1) * N * H * D + H;
+  DType* back_ht = back_ht_1;
+  DType* gemmC1  = ws;              // [D, T, N, 3 * H]
+  DType* gemmC2  = gemmC1 + D * T * N * 3 * H;  // N * 3 * H
+  DType* rt = gemmC2 + N * 3 * H;
+  DType* zt = rt + N * H;
+  DType* nt = zt + N * H;
+  DType* back_wx_ptr = wx_ptr + I * 3 * H + H * 3 * H;
+  DType* back_wh_ptr = wh_ptr + I * 3 * H + H * 3 * H;
+  DType* back_bx_ptr = (bx_ptr != NULL)? bx_ptr + 3 * H * 2 : NULL;
+  DType* back_bh_ptr = (bh_ptr != NULL)? bh_ptr + 3 * H * 2: NULL;
+  DType* back_gemmC1 = gemmC1 + T * N * 3 * H;
+  DType* gemmC1_t = gemmC1;
+  Tensor<cpu, 2, DType> wx(wx_ptr, Shape2(H * 3, I));
+  Tensor<cpu, 2, DType> wh(wh_ptr, Shape2(H * 3, H));
+  Tensor<cpu, 2, DType> bx(bx_ptr, Shape2(3, H));
+  Tensor<cpu, 2, DType> bh(bh_ptr, Shape2(3, H));
+  Tensor<cpu, 2, DType> back_wx(back_wx_ptr, Shape2(H * 3, I));
+  Tensor<cpu, 2, DType> back_wh(back_wh_ptr, Shape2(H * 3, H));
+  Tensor<cpu, 2, DType> back_bx(back_bx_ptr, Shape2(3, H));
+  Tensor<cpu, 2, DType> back_bh(back_bh_ptr, Shape2(3, H));
+  const int omp_threads = mxnet::engine::OpenMP::Get()->GetRecommendedOMPThreadCount();
+  if (D == 1) {
+    #pragma omp parallel for num_threads(omp_threads)
+    for (int i = 0; i < N; i++)
+      for (int j = 0; j < H; j++) {
+        y_ptr[i * H + j] = hx[i][j];
+      }
+  } else {
+    #pragma omp parallel for num_threads(omp_threads)
+    for (int i = 0; i < N; i++)
+      for (int j = 0; j < H; j++) {
+        y_ptr[i * D * H + j] = hx[i][j];
+        back_ht_1[i * D * H + j] = hx[N + i][j];
+    }
+  }
+
+  // x * wx.T : [T * N, I] * [I, 3 * H]
+  DType alpha = 1.0;
+  DType beta = 0.0;
+/*
+  cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans, N * T, 3 * H, I, alpha,
+    reinterpret_cast<float *>(x.dptr_), I, reinterpret_cast<float *>(wx_ptr),
+    I, beta, reinterpret_cast<float *>(gemmC1), 3 * H);
+
+  for(int i = 0; i < 5; i++) {
+    LOG(INFO) << "gemmC1[" << i << "]" << gemmC1[i];
+  }
+*/
+
+/*
+  for(int i = 0; i < T * N; i++) {
+    for(int j = 0; j < I; j++) {
+      LOG(INFO) << "x[" << i << "][" << j << "]:" << x[i][j];
+    }
+  }
+
+  for(int i = 0; i < 3 * H; i++) {
+    for(int j = 0; j < I; j++) {
+      LOG(INFO) << "wx[" << i << "][" << j << "]:" << wx[i][j];
+    }
+  }
+
+  for(int i = 0; i < 3 * H; i++) {
+    for(int j = 0; j < H; j++) {
+      LOG(INFO) << "wh[" << i << "][" << j << "]:" << wh[i][j];
+    }
+  }
+*/
+  MKL_INT  ao = 0, bo = 0;
+  float factor_x = 63 / getmax(x.dptr_, T * N * I);
+  float factor_wx = 127 / getmax(wx.dptr_, 3 * H * I);
+  float factor_wh = 127 / getmax(wh.dptr_, 3 * H * H);
+  float factor_backwx = 1.0f;
+  float factor_backwh = 1.0f;
+  if (D == 2) {
+    factor_backwx = 127 / getmax(back_wx.dptr_, 3 * H * I);
+    factor_backwh = 127 / getmax(back_wh.dptr_, 3 * H * H);
+  }
+
+  MKL_INT8* x_int8 = reinterpret_cast<MKL_INT8* > (mkl_calloc(T * N * I, sizeof(MKL_INT8), 64));
+  MKL_INT8* wx_int8 = reinterpret_cast<MKL_INT8* > (mkl_calloc(3 * H * I, sizeof(MKL_INT8), 64));
+  MKL_INT8* wh_int8 = reinterpret_cast<MKL_INT8* > (mkl_calloc(3 * H * H, sizeof(MKL_INT8), 64));
+  MKL_INT32* wx_sum_int8 = reinterpret_cast<MKL_INT32* > (mkl_calloc(3 * H, sizeof(MKL_INT32), 64));
+  MKL_INT32* wh_sum_int8 = reinterpret_cast<MKL_INT32* > (mkl_calloc(3 * H, sizeof(MKL_INT32), 64));
+  MKL_INT8* ht_1_int8 = reinterpret_cast<MKL_INT8* > (mkl_calloc(N * D * H, sizeof(MKL_INT8), 64));
+  MKL_INT32* gemmC1_int8 = reinterpret_cast<MKL_INT32* >
+      (mkl_calloc(T * N * 3 * H, sizeof(MKL_INT32), 64));
+  MKL_INT32* gemmC2_int8 = reinterpret_cast<MKL_INT32* >
+      (mkl_calloc(N * 3 * H, sizeof(MKL_INT32), 64));
+  MKL_INT8* back_wx_int8;
+  MKL_INT8* back_wh_int8;
+  MKL_INT32* back_wx_sum_int8;
+  MKL_INT32* back_wh_sum_int8;
+  MKL_INT32* back_gemmC1_int8;
+  MKL_INT8* back_ht_1_int8;
+  float foffset = 0.5;
+  if (D == 2) {
+    back_wx_int8 = reinterpret_cast<MKL_INT8* > (mkl_calloc(3 * H * I, sizeof(MKL_INT8), 64));
+    back_wh_int8 = reinterpret_cast<MKL_INT8* > (mkl_calloc(3 * H * H, sizeof(MKL_INT8), 64));
+    back_wx_sum_int8 = reinterpret_cast<MKL_INT32* >
+        (mkl_calloc(3 * H, sizeof(MKL_INT32), 64));
+    back_wh_sum_int8 = reinterpret_cast<MKL_INT32* >
+        (mkl_calloc(3 * H, sizeof(MKL_INT32), 64));
+    back_gemmC1_int8 = reinterpret_cast<MKL_INT32* >
+        (mkl_calloc(T * N * 3 * H, sizeof(MKL_INT32), 64));
+    back_ht_1_int8 = reinterpret_cast<MKL_INT8* > (mkl_calloc(N * D * H, sizeof(MKL_INT8), 64));
+  }
+
+  // scale x
+  #pragma omp parallel for num_threads(omp_threads)
+  for (int i = 0; i < T * N; ++i) {
+    for (int j = 0; j < I; ++j) {
+      if (x[i][j] > 0) {
+        foffset = 0.5;
+      } else if (x[i][j]  == 0) {
+        foffset = 0.0;
+      } else {
+        foffset = -0.5;
+      }
+      x_int8[i * I + j] = (MKL_INT8) (x[i][j] * factor_x + foffset) + 64;  //  ensure x >= 0
+    }
+  }
+  // scale wx
+  #pragma omp parallel for num_threads(omp_threads)
+  for (int i = 0; i < 3 * H; ++i) {
+    for (int j = 0; j < I; ++j) {
+      if (wx[i][j] > 0) {
+        foffset = 0.5;
+      } else if (wx[i][j]  == 0) {
+        foffset = 0.0;
+      } else {
+        foffset = -0.5;
+      }
+      wx_int8[i * I + j] = (MKL_INT8)(wx[i][j] * factor_wx + foffset);
+    }
+  }
+
+  //  prepare sum data for wx
+  #pragma omp parallel for num_threads(omp_threads)
+  for (int i = 0; i < 3 * H; ++i) {
+    wx_sum_int8[i] = 0;
+    for (int j = 0; j < I; ++j) {
+      wx_sum_int8[i] += (-64) * wx_int8[i * I + j];
+    }
+  }
+
+  cblas_gemm_s8u8s32(CblasRowMajor, CblasNoTrans, CblasTrans, CblasRowOffset,
+      N * T, 3 * H, I, alpha, x_int8, I, ao, wx_int8, I, bo, beta,
+      gemmC1_int8, 3 * H, wx_sum_int8);
+
+  // scale back gemmC1
+  #pragma omp parallel for num_threads(omp_threads)
+  for (int i = 0; i < T * N; ++i) {
+    for (int j = 0; j < 3 * H; ++j) {
+      gemmC1[i * 3 * H + j] = gemmC1_int8[i * 3 * H + j] / (factor_x * factor_wx);  //  float
+    }
+  }
+
+
+/*
+  MKL_INT8* a_int8 = reinterpret_cast<MKL_INT8* > (mkl_calloc(1, sizeof(MKL_INT8), 64));
+  MKL_INT8* b_int8 = reinterpret_cast<MKL_INT8* > (mkl_calloc(1, sizeof(MKL_INT8), 64));
+  MKL_INT32* c_int8 = reinterpret_cast<MKL_INT32* > (mkl_calloc(1, sizeof(MKL_INT32), 64));
+  MKL_INT32 co = 0;
+  a_int8[0] = (MKL_INT8)-1;
+  b_int8[0] = (MKL_INT8)1;
+  cblas_gemm_s8u8s32(CblasRowMajor, CblasNoTrans, CblasNoTrans, CblasFixOffset,
+      1, 1, 1, 1, a_int8, 1, 0, b_int8, I, 0, 0,
+      c_int8, 1, &co);
+  LOG(INFO) << "c_int8[0]:" << c_int8[0];
+*/
+  if (D == 2) {
+/*
+    cblas_sgemm(CblasRowMajor,CblasNoTrans, CblasTrans, N * T, 3 * H, I, alpha, 
+      reinterpret_cast<float *>(x.dptr_), I, reinterpret_cast<float *>(back_wx_ptr),
+      I, beta, reinterpret_cast<float *>(back_gemmC1), 3 * H); 
+*/
+    //  scale back_wx
+    #pragma omp parallel for num_threads(omp_threads)
+    for (int i = 0; i < 3 * H; ++i) {
+      for (int j = 0; j < I; ++j) {
+        if (back_wx[i][j] > 0) {
+          foffset = 0.5;
+        } else if (back_wx[i][j]  == 0) {
+          foffset = 0.0;
+        } else {
+          foffset = -0.5;
+        }
+        back_wx_int8[i * I + j] = (MKL_INT8)(back_wx[i][j] * factor_backwx + foffset);
+      }
+    }
+
+    //  prepare sum data for back_wx
+    #pragma omp parallel for num_threads(omp_threads)
+    for (int i = 0; i < 3 * H; ++i) {
+      back_wx_sum_int8[i] = 0;
+      for (int j = 0; j < I; ++j) {
+        back_wx_sum_int8[i] += (-64) * back_wx_int8[i * I + j];
+      }
+    }
+    cblas_gemm_s8u8s32(CblasRowMajor, CblasNoTrans, CblasTrans, CblasRowOffset,
+        N * T, 3 * H, I, alpha, x_int8, I, ao, back_wx_int8, I, bo, beta,
+        back_gemmC1_int8, 3 * H, back_wx_sum_int8);
+
+    // scale back back_gemmC1
+    #pragma omp parallel for num_threads(omp_threads)
+    for (int i = 0; i < T * N; ++i) {
+      for (int j = 0; j < 3 * H; ++j) {
+        back_gemmC1[i * 3 * H + j] = back_gemmC1_int8[i * 3 * H + j] / (factor_x * factor_backwx);
+      }
+    }
+  }
+
+  // scale wh
+  #pragma omp parallel for num_threads(omp_threads)
+  for (int i = 0; i < 3 * H; ++i) {
+    for (int j = 0; j < H; ++j) {
+      if (wh[i][j] > 0) {
+        foffset = 0.5;
+      } else if (wh[i][j]  == 0) {
+        foffset = 0.0;
+      } else {
+        foffset = -0.5;
+      }
+      wh_int8[i * H + j] = (MKL_INT8)(wh[i][j] * factor_wh + foffset);
+    }
+  }
+
+  //  prepare sum data for wh
+  #pragma omp parallel for num_threads(omp_threads)
+  for (int i = 0; i < 3 * H; ++i) {
+    wh_sum_int8[i] = 0;
+    for (int j = 0; j < H; ++j) {
+      wh_sum_int8[i] += (-64) * wh_int8[i * H + j];
+    }
+  }
+
+  // scale back_wh
+  if (D == 2) {
+    #pragma omp parallel for num_threads(omp_threads)
+    for (int i = 0; i < 3 * H; ++i) {
+      for (int j = 0; j < H; ++j) {
+        if (back_wh[i][j] > 0) {
+          foffset = 0.5;
+        } else if (back_wh[i][j]  == 0) {
+          foffset = 0.0;
+        } else {
+          foffset = -0.5;
+        }
+        back_wh_int8[i * H + j] = (MKL_INT8)(back_wh[i][j] * factor_backwh + foffset);
+      }
+    }
+
+    //  prepare sum data for back_wh
+    #pragma omp parallel for num_threads(omp_threads)
+    for (int i = 0; i < 3 * H; ++i) {
+      back_wh_sum_int8[i] = 0;
+      for (int j = 0; j < H; ++j) {
+        back_wh_sum_int8[i] += (-64) * back_wh_int8[i * H + j];
+      }
+    }
+  }
+
+
+  for (int t = 0; t < T; t++) {
+    //  perform the first direction, X * wx and H * wh for each step
+    //  ht-1 * wh, ht-1:[N, H] wh:[3 * H, H]
+/*
+    cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans, N, 3 * H, H, alpha, 
+      reinterpret_cast<float *>(ht_1), D * H, 
+      reinterpret_cast<float *>(wh_ptr), H, beta,
+      reinterpret_cast<float *>(gemmC2), 3 * H);   
+
+    for(int i = 0; i < 5; i++) {
+      LOG(INFO) << "gemmC2[" << i << "]" << gemmC2[i];
+    }
+*/
+    // scale ht_1
+    float factor_ht_1 = 1.0;
+    if (D == 1) {
+      factor_ht_1 = 63 / getmax(ht_1, N * D * H);
+    } else {
+      Tensor<cpu, 2, DType> dht_1(ht_1, Shape2(N, D * H));
+      Tensor<cpu, 3, DType> dht_1_tmp = Tensor<cpu, 3, DType>(reinterpret_cast<DType*>(tmp_buf),
+                                        Shape3(D, H, N));
+      dht_1_tmp = reshape(dht_1.T(), Shape3(D, H, N));
+      factor_ht_1 = 63 / getmax(dht_1_tmp[0].dptr_, H * N);
+    }
+    #pragma omp parallel for num_threads(omp_threads)
+    for (int i = 0; i < N; ++i) {
+      for (int j = 0; j < D * H; ++j) {
+        if (ht_1[i * D * H + j] > 0) {
+          foffset = 0.5;
+        } else if (ht_1[i * D * H + j] == 0) {
+          foffset = 0.0;
+        } else {
+          foffset = -0.5;
+        }
+        ht_1_int8[i * D * H + j] = (MKL_INT8)(ht_1[i * D * H + j] * factor_ht_1
+            + foffset) + 64;  //  ensure ht_1 >= 0
+      }
+    }
+
+
+    cblas_gemm_s8u8s32(CblasRowMajor, CblasNoTrans, CblasTrans,
+        CblasRowOffset, N, 3 * H, H, alpha, ht_1_int8, D * H, ao,
+        wh_int8, H, bo, beta, gemmC2_int8, 3 * H, wh_sum_int8);
+
+    // scale back gemmC2
+    #pragma omp parallel for num_threads(omp_threads)
+    for (int i = 0; i < N; ++i) {
+      for (int j = 0; j < 3 * H; ++j) {
+        gemmC2[i * 3 * H + j] = gemmC2_int8[i * 3 * H + j] / (factor_wh * factor_ht_1);
+      }
+    }
+/*
+    for(int i = 0; i < 5; i++) {
+      LOG(INFO) << "gemmC2[" << i << "]" << gemmC2[i];
+    }
+*/
+    gemmC1_t = gemmC1 + t * N * 3 * H;
+    #pragma omp parallel for num_threads(omp_threads)
+    for (int i = 0; i < N; ++i) {
+      for (int j = 0; j < H; ++j) {
+        int rtb = i * 3 * H;
+        int ztb = i * 3 * H + H;
+        int ntb = i * 3 * H + 2 * H;
+        rt[i * H + j] = sigmoid(gemmC1_t[rtb + j] + gemmC2[rtb + j]
+            + bx[0][j] + bh[0][j]);
+        zt[i * H + j] = sigmoid(gemmC1_t[ztb + j] + gemmC2[ztb + j]
+            + bx[1][j] + bh[1][j]);
+        nt[i * H + j] = tanh(gemmC1_t[ntb + j] + bx[2][j] +
+            rt[i * H + j] * (gemmC2[ntb + j] + bh[2][j]));
+        /*
+        ht[i * D * H + j] = (1 - zt[i * H + j]) * nt[i * H + j] +
+            zt[i * H + j] * (ht_1_int8[i * D * H + j] / factor_ht_1);
+        */
+        ht[i * D * H + j] = (1 - zt[i * H + j]) * nt[i * H + j] +
+            zt[i * H + j] * ht_1[i * D * H + j];
+      }
+    }
+    ht_1 = ht;
+    ht = ht + D * H * N;
+    //  perform the second direction
+    if (D == 2) {
+      gemmC1_t = back_gemmC1 + (T - 1 - t) * N * 3 * H;
+/*
+      cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans, N, 3 * H, H, alpha, 
+        reinterpret_cast<float *>(back_ht_1), D * H,
+        reinterpret_cast<float *>(back_wh_ptr), H, beta,
+        reinterpret_cast<float *>(gemmC2), 3 * H);
+*/
+      // scale back_ht_1
+      float factor_back_ht_1 = 1.0;
+      if (D == 1) {
+        factor_back_ht_1 = 63 / getmax(back_ht_1, N * D * H);
+      } else {
+        Tensor<cpu, 2, DType> dback_ht_1(back_ht_1 - H, Shape2(N, D * H));
+        Tensor<cpu, 3, DType> dback_ht_1_tmp = Tensor<cpu, 3, DType>
+            (reinterpret_cast<DType*>(tmp_buf), Shape3(D, H, N));
+        dback_ht_1_tmp = reshape(dback_ht_1.T(), Shape3(D, H, N));
+        factor_back_ht_1 = 63 / getmax(dback_ht_1_tmp[1].dptr_, H * N);
+      }
+      #pragma omp parallel for num_threads(omp_threads)
+      for (int i = 0; i < N; ++i) {
+        for (int j = 0; j < D * H; ++j) {
+          if (back_ht_1[i * D * H + j] > 0) {
+            foffset = 0.5;
+          } else if (back_ht_1[i * D * H + j] == 0) {
+            foffset = 0.0;
+          } else {
+            foffset = -0.5;
+          }
+          back_ht_1_int8[i * D * H + j] = (MKL_INT8)(back_ht_1[i * D * H + j] * factor_back_ht_1
+              + foffset) + 64;  // ensure back_ht1 >= 0
+        }
+      }
+
+      cblas_gemm_s8u8s32(CblasRowMajor, CblasNoTrans, CblasTrans,
+          CblasRowOffset, N, 3 * H, H, alpha, back_ht_1_int8, D * H, ao,
+          back_wh_int8, H, bo, beta, gemmC2_int8, 3 * H, back_wh_sum_int8);
+
+      // scale back gemmC2
+      #pragma omp parallel for num_threads(omp_threads)
+      for (int i = 0; i < N; ++i) {
+        for (int j = 0; j < 3 * H; ++j) {
+          gemmC2[i * 3 * H + j] = gemmC2_int8[i * 3 * H + j] / (factor_backwh * factor_back_ht_1);
+        }
+      }
+
+      #pragma omp parallel for num_threads(omp_threads)
+      for (int i = 0; i < N; ++i) {
+        for (int j = 0; j < H; ++j) {
+          int rtb = i * 3 * H;
+          int ztb = i * 3 * H + H;
+          int ntb = i * 3 * H + 2 * H;
+          rt[i * H + j] = sigmoid(gemmC1_t[rtb + j] +
+              gemmC2[rtb + j] + back_bx[0][j] + back_bh[0][j]);
+          zt[i * H + j] = sigmoid(gemmC1_t[ztb + j] +
+              gemmC2[ztb + j] + back_bx[1][j]+ back_bh[1][j]);
+          nt[i * H + j] = tanh(gemmC1_t[ntb + j] + back_bx[2][j]
+              + rt[i * H + j] * (gemmC2[ntb + j] + back_bh[2][j]));
+          /*
+          back_ht[i * D * H + j] = (1 - zt[i * H + j]) * nt[i * H + j]
+              + zt[i * H + j] * (back_ht_1_int8[i * D * H + j] / factor_back_ht_1);
+          */
+          back_ht[i * D * H + j] = (1 - zt[i * H + j]) * nt[i * H + j]
+              + zt[i * H + j] * back_ht_1[i * D * H + j];
+        }
+      }
+      back_ht_1 = back_ht;
+      back_ht = back_ht - D * H * N;
+    }
+  }
+
+  mkl_free(x_int8);
+  mkl_free(wx_int8);
+  mkl_free(wh_int8);
+  mkl_free(wx_sum_int8);
+  mkl_free(wh_sum_int8);
+  mkl_free(gemmC1_int8);
+  mkl_free(gemmC2_int8);
+  mkl_free(ht_1_int8);
+  if (D == 2) {
+    mkl_free(back_wx_int8);
+    mkl_free(back_wh_int8);
+    mkl_free(back_wx_sum_int8);
+    mkl_free(back_wh_sum_int8);
+    mkl_free(back_gemmC1_int8);
+    mkl_free(back_ht_1_int8);
+  }
+
+  //  copy last state to hy, from(N, H * D) to (D, N, H)
+  if (state_outputs) {
+    if (D == 1) {
+      DType* y_start = y_ptr + (T - 1) * N * H;
+      #pragma omp parallel for num_threads(omp_threads)
+      for (int i = 0; i < N; i++)
+        for (int j = 0; j < H; j++) {
+          hy_ptr[i * H + j] = y_start[i * H + j];
+        }
+    } else {
+      DType* y_start = y_ptr + (T - 1) * N * H * D;
+      DType* y_back_start = y_ptr + H;
+      #pragma omp parallel for num_threads(omp_threads)
+      for (int i = 0; i < N; i++)
+        for (int j = 0; j < H; j++) {
+          hy_ptr[i * H + j] = y_start[i * D * H + j];
+          hy_ptr[N * H + i * H + j] = y_back_start[i * D * H + j];
+        }
+    }
+  }
+}
+
+template<typename DType>
+void GruForwardInference_int8(DType* ws,
+                         bool state_outputs,
+                         const int L,
+                         const int D,
+                         const int T,
+                         const int N,
+                         int I,
+                         const int H,
+                         DType* x_ptr,
+                         DType* hx_ptr,
+                         DType* w_ptr,
+                         DType* y_ptr,
+                         DType* hy_ptr) {
+  DType* wx = w_ptr;
+  DType* wh = wx + I * H * 3;
+  DType* bx = wh + H * H * 3 + (D - 1) * (H * H * 3 + I * H * 3)
+      + (L - 1) * ((D + 1) * H) * H * 3 * D;
+  DType* bh = bx + H * 3;
+
+  DType* y_tmp = ws;
+  DType* y_l = x_ptr;
+  DType* tmp_buf = y_tmp + D * T * N * H;
+  DType* ws2 = y_tmp + D * T * N * H + D * H * N;
+
+  DType* wx_l = wx;
+  DType* wh_l = wh;
+  DType* bx_l = bx;
+  DType* bh_l = bh;
+  Tensor<cpu, 3, DType> hx(hx_ptr, Shape3(D * L, N, H));
+  DType* hy_l = hy_ptr;
+  for (int l = 0; l < L; l++) {
+    Tensor<cpu, 2, DType> x_l(y_l, Shape2(T * N, I));
+    if ((L + l) % 2) {
+      y_l = y_ptr;
+    } else {
+      y_l = y_tmp;
+    }
+    Tensor<cpu, 2, DType> hx_l = hx[D * l];
+    GruForwardInferenceSingleLayer_int8<DType>(ws2, tmp_buf, state_outputs, D, T, N, I, H,
+                                        x_l, hx_l, wx_l, wh_l, bx_l, bh_l, y_l, hy_l);
+    hy_l = hy_l + D * N * H;
+    bx_l = bx_l + 3 * H * D * 2;
+    bh_l = bh_l + 3 * H * D * 2;
+    wx_l = wx_l + I * H * 3 * D + H * H * 3 * D;
+    if (l == 0) {
+      I = D * H;
+    }
+    wh_l = wx_l + I * 3 * H;
+  }
+}
+
+
+template<typename DType>
 void GruForwardInferenceSingleLayer(DType* ws,
                                     DType* tmp_buf,
                                     bool state_outputs,
@@ -691,7 +1501,6 @@ void GruForwardInferenceSingleLayer(DType* ws,
           (reinterpret_cast<DType*>(tmp_buf), Shape3(D, H, N));
       dback_ht_1_tmp = reshape(dback_ht_1.T(), Shape3(D, H, N));
       linalg_gemm(dback_ht_1_tmp[1], back_wh, dgemmC2, alpha, beta, true, true);
-
       #pragma omp parallel for num_threads(omp_threads)
       for (int i = 0; i < N; ++i) {
         for (int j = 0; j < H; ++j) {
@@ -2042,7 +2851,7 @@ void VanillaRNNBackwardSingleLayer(DType* ws,
         if (mode == 1) {
           dart[id] = dht1[id] * (1 - nt[id] * nt[id]);
         } else {
-          dart[id] = nt[id] > 0.0f ? static_cast<float>(dht1[id]) : 0.0f;
+          dart[id] = nt[id] >= 0.0f ? static_cast<float>(dht1[id]) : 0.0f;
         }
         dht1[id] = 0;
       }

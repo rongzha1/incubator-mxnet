@@ -30,6 +30,50 @@ from mxnet.base import py_str, MXNetError, _as_list
 from common import setup_module, with_seed, teardown, assert_raises_cudnn_disabled, assertRaises
 import unittest
 
+def check_rnn_consistency2(cell1, cell2, T, N, I, H, grad_req):
+    dshape = (N, T, I)
+    data = mx.sym.Variable('data', dtype=np.float64)
+
+    Y1, _ = cell1.unroll(T, data, layout='NTC', merge_outputs=True)
+    mod1 = mx.mod.Module(Y1, label_names=None, context=default_context())
+    mod1.bind(data_shapes=[('data', dshape, np.float64)], label_shapes=None, inputs_need_grad=True, grad_req=grad_req)
+
+    Y2, _ = cell2.unroll(T, data, layout='NTC', merge_outputs=True)
+    mod2 = mx.mod.Module(Y2, label_names=None, context=default_context())
+    mod2.bind(data_shapes=[('data', dshape, np.float64)], label_shapes=None, inputs_need_grad=True, grad_req=grad_req)
+
+    mod1.init_params()
+    args, auxs = mod1.get_params()
+    args = cell1.unpack_weights(args)
+    args = cell2.pack_weights(args)
+    mod2.set_params(args, auxs)
+
+    x = mx.random.uniform(shape=dshape, dtype=np.float64)
+    batch=mx.io.DataBatch(data=[x.astype(np.float64)])
+
+    # check inference
+    mod1.forward(batch, is_train=False)
+    mod2.forward(batch, is_train=False)
+    assert_allclose(mod1.get_outputs()[0].asnumpy(), mod2.get_outputs()[0].asnumpy(), rtol=1e-2, atol=1e-4)
+
+    # check training
+    
+    mod1.forward(batch, is_train=True)
+    mod2.forward(batch, is_train=True)   
+    
+    assert_allclose(mod1.get_outputs()[0].asnumpy(), mod2.get_outputs()[0].asnumpy(), rtol=1e-2, atol=1e-4)
+
+    dy = mx.random.uniform(shape=mod1.get_outputs()[0].shape, dtype=np.float64)
+    mod1.backward(out_grads=[dy])
+    mod2.backward(out_grads=[dy])
+    
+    if grad_req != 'null':
+        assert_allclose(mod1.get_input_grads()[0].astype(np.float64).asnumpy(), mod2.get_input_grads()[0].astype(np.float64).asnumpy(), rtol=1e-2, atol=1e-4)
+    else:
+        assert(mod1.get_input_grads()[0] == None)
+        assert(mod2.get_input_grads()[0] == None)
+    
+
 def check_rnn_consistency(cell1, cell2, T, N, I, H, grad_req):
     dshape = (N, T, I)
     data = mx.sym.Variable('data')
@@ -57,19 +101,113 @@ def check_rnn_consistency(cell1, cell2, T, N, I, H, grad_req):
 
     # check training
     mod1.forward(batch, is_train=True)
-    mod2.forward(batch, is_train=True)
+    mod2.forward(batch, is_train=True)    
     assert_allclose(mod1.get_outputs()[0].asnumpy(), mod2.get_outputs()[0].asnumpy(), rtol=1e-2, atol=1e-4)
 
     dy = mx.random.uniform(shape=mod1.get_outputs()[0].shape)
     mod1.backward(out_grads=[dy])
     mod2.backward(out_grads=[dy])
+   
     if grad_req != 'null':
         assert_allclose(mod1.get_input_grads()[0].asnumpy(), mod2.get_input_grads()[0].asnumpy(), rtol=1e-2, atol=1e-4)
     else:
         assert(mod1.get_input_grads()[0] == None)
         assert(mod2.get_input_grads()[0] == None)
 
+def check_rnn_consistency_int8(cell1, cell2, T, N, I, H, grad_req):
+    dshape = (N, T, I)
+    data = mx.sym.Variable('data')
 
+    Y1, _ = cell1.unroll(T, data, layout='NTC', merge_outputs=True)
+    mod1 = mx.mod.Module(Y1, label_names=None, context=default_context())
+    mod1.bind(data_shapes=[('data', dshape)], label_shapes=None, inputs_need_grad=True, grad_req=grad_req)
+
+    Y2, _ = cell2.unroll(T, data, layout='NTC', merge_outputs=True)
+    mod2 = mx.mod.Module(Y2, label_names=None, context=default_context())
+    mod2.bind(data_shapes=[('data', dshape)], label_shapes=None, inputs_need_grad=True, grad_req=grad_req)
+
+    mod1.init_params()
+    args, auxs = mod1.get_params()
+    args = cell1.unpack_weights(args)
+    args = cell2.pack_weights(args)
+    mod2.set_params(args, auxs)
+    
+    x = mx.random.uniform(shape=dshape)
+    batch=mx.io.DataBatch(data=[x])
+
+    # check inference
+    mod1.forward(batch, is_train=False)
+    mod2.forward(batch, is_train=False)
+    assert_allclose(mod1.get_outputs()[0].asnumpy(), mod2.get_outputs()[0].asnumpy(), rtol=1e-2, atol=1e-2)
+
+@with_seed()
+def test_gru_int8_infer():
+    T, N, I, H = 5, 32, 800, 800
+    T, N, I, H = 60, 128, 256, 512
+    T, N, I, H = 30, 64, 256, 256
+    fused = mx.rnn.FusedRNNCell(H, num_layers=5, mode='gru', get_next_state=True, prefix='')
+    stack = mx.rnn.SequentialRNNCell()
+    stack.add(mx.rnn.GRUCell(H, prefix='l0_'))
+    
+    stack.add(mx.rnn.GRUCell(H, prefix='l1_'))
+    stack.add(mx.rnn.GRUCell(H, prefix='l2_'))
+    stack.add(mx.rnn.GRUCell(H, prefix='l3_'))
+    stack.add(mx.rnn.GRUCell(H, prefix='l4_'))
+    
+    check_rnn_consistency_int8(fused, stack, T, N, I, H, 'write')
+
+@with_seed()
+def test_lstm_int8_infer():
+    T, N, I, H = 5, 32, 800, 800
+    T, N, I, H = 60, 128, 256, 512
+    T, N, I, H = 30, 64, 256, 256
+    fused = mx.rnn.FusedRNNCell(H, num_layers=5, mode='lstm', get_next_state=True, prefix='')
+    stack = mx.rnn.SequentialRNNCell()
+    stack.add(mx.rnn.LSTMCell(H, prefix='l0_'))
+    
+    stack.add(mx.rnn.LSTMCell(H, prefix='l1_'))
+    
+    stack.add(mx.rnn.LSTMCell(H, prefix='l2_'))
+    stack.add(mx.rnn.LSTMCell(H, prefix='l3_'))
+    stack.add(mx.rnn.LSTMCell(H, prefix='l4_'))
+    
+    check_rnn_consistency_int8(fused, stack, T, N, I, H, 'write')
+
+@with_seed()
+def test_lstm_int8_bi_infer():
+    T, N, I, H = 5, 32, 800, 800
+    T, N, I, H = 60, 128, 256, 512
+    T, N, I, H = 30, 64, 256, 256
+    fused = mx.rnn.FusedRNNCell(H, num_layers=2, mode='lstm',
+                                bidirectional=True, get_next_state=True, prefix='')
+
+    stack = mx.rnn.SequentialRNNCell()
+    stack.add(mx.rnn.BidirectionalCell(
+                mx.rnn.LSTMCell(H, prefix='l0_'),
+                mx.rnn.LSTMCell(H, prefix='r0_'),
+                output_prefix='bi_lstm_0_'))
+    
+    stack.add(mx.rnn.BidirectionalCell(
+                mx.rnn.LSTMCell(H, prefix='l1_'),
+                mx.rnn.LSTMCell(H, prefix='r1_'),
+                output_prefix='bi_lstm_1_'))
+    '''
+    stack.add(mx.rnn.BidirectionalCell(
+                mx.rnn.LSTMCell(H, prefix='l2_'),
+                mx.rnn.LSTMCell(H, prefix='r2_'),
+                output_prefix='bi_lstm_2_'))
+
+    stack.add(mx.rnn.BidirectionalCell(
+                mx.rnn.LSTMCell(H, prefix='l3_'),
+                mx.rnn.LSTMCell(H, prefix='r3_'),
+                output_prefix='bi_lstm_3_'))
+
+    stack.add(mx.rnn.BidirectionalCell(
+                mx.rnn.LSTMCell(H, prefix='l4_'),
+                mx.rnn.LSTMCell(H, prefix='r4_'),
+                output_prefix='bi_lstm_4_'))
+    '''
+    check_rnn_consistency_int8(fused, stack, T, N, I, H, 'write')
 
 @with_seed()
 @assert_raises_cudnn_disabled()
