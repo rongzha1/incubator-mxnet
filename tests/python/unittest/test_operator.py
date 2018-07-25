@@ -211,51 +211,32 @@ def test_lstm_int8_bi_infer():
 
 @with_seed()
 def test_batch_dot_int8():
-    dtypes = ['float32', 'float64']   
+    dtypes = ['float32']   
     for data_type in dtypes:
-        for batch_size in range(1, 5):
-            for m in range(1, 5):
-                for k in range(1, 5):
-                    for n in range(1, 5):
-                        transpose_a = (np.random.rand() > 0.5)
-                        transpose_b = (np.random.rand() > 0.5)
-                        a_npy = np.random.normal(0, 1, (batch_size, m, k))
-                        a_npy = a_npy.astype(data_type)
-                        b_npy = np.random.normal(0, 1, (batch_size, k, n))
-                        b_npy = b_npy.astype(data_type)
-                        c_npy = np.empty((batch_size, m, n), dtype=data_type)
-                        ograd_npy = np.random.normal(0, 1, (batch_size, m, n))
-                        ograd_npy = ograd_npy.astype(data_type)
-                        agrad_npy = np.empty((batch_size, m, k), dtype=data_type)
-                        bgrad_npy = np.empty((batch_size, k, n), dtype=data_type)
-                        a_init_grad_npy = np.random.normal(size=(batch_size, m, k))
-                        a_init_grad_npy = a_npy.astype(data_type)
-                        b_init_grad_npy = np.random.normal(size=(batch_size, k, n))
-                        b_init_grad_npy = b_npy.astype(data_type)
-                        for i in range(batch_size):
-                            c_npy[i, :, :] = np.dot(a_npy[i, :, :], b_npy[i, :, :])
-                            bgrad_npy[i, :, :] = np.dot(a_npy[i, :, :].T, ograd_npy[i, :, :])
-                            agrad_npy[i, :, :] = np.dot(ograd_npy[i, :, :], b_npy[i, :, :].T)
-                        a = mx.sym.Variable('a', dtype=data_type)
-                        b = mx.sym.Variable('b', dtype=data_type)
-                        c = mx.sym.batch_dot(a, b, transpose_a=transpose_a, transpose_b=transpose_b)
-                        if transpose_a:
-                            a_npy = np.transpose(a_npy, axes=(0, 2, 1))
-                            agrad_npy = np.transpose(agrad_npy, axes=(0, 2, 1))
-                            a_init_grad_npy = np.transpose(a_init_grad_npy, axes=(0, 2, 1))
-                        if transpose_b:
-                            b_npy = np.transpose(b_npy, axes=(0, 2, 1))
-                            bgrad_npy = np.transpose(bgrad_npy, axes=(0, 2, 1))
-                            b_init_grad_npy = np.transpose(b_init_grad_npy, axes=(0, 2, 1))
-                        exe = c.simple_bind(ctx=default_context(),
-                            a=a_npy.shape, b=b_npy.shape, grad_req='write')
-                        exe_add = c.simple_bind(ctx=default_context(),
-                            a=a_npy.shape, b=b_npy.shape, grad_req='add')
-                        exe_add.grad_dict['a'][:] = a_init_grad_npy
-                        exe_add.grad_dict['b'][:] = b_init_grad_npy
-                        outputs = exe.forward(is_train=False, a=a_npy, b=b_npy)
-                        assert_almost_equal(outputs[0].asnumpy(), c_npy,
-                                            rtol=1e-2, atol=1e-4)
+        batch_size = 20
+        m = 50
+        n = 800
+        k = 800
+        transpose_a = (np.random.rand() > 0.5)
+        transpose_b = (np.random.rand() > 0.5)
+        a_npy = np.random.uniform(0, 1, (batch_size, m, k))
+        a_npy = a_npy.astype(data_type)
+        b_npy = np.random.uniform(0, 0.1, (batch_size, k, n))
+        b_npy = b_npy.astype(data_type)
+        c_npy = np.empty((batch_size, m, n), dtype=data_type)                        
+        for i in range(batch_size):
+            c_npy[i, :, :] = np.dot(a_npy[i, :, :], b_npy[i, :, :])                            
+        a = mx.sym.Variable('a', dtype=data_type)
+        b = mx.sym.Variable('b', dtype=data_type)
+        c = mx.sym.batch_dot(a, b, transpose_a=transpose_a, transpose_b=transpose_b)
+        if transpose_a:
+            a_npy = np.transpose(a_npy, axes=(0, 2, 1))
+        if transpose_b:
+            b_npy = np.transpose(b_npy, axes=(0, 2, 1))
+        exe = c.simple_bind(ctx=default_context(),
+            a=a_npy.shape, b=b_npy.shape, grad_req='write')
+        outputs = exe.forward(is_train=False, a=a_npy, b=b_npy)
+        assert_almost_equal(outputs[0].asnumpy(), c_npy, rtol=1e-2, atol=1e-2)
 
 
 @with_seed()

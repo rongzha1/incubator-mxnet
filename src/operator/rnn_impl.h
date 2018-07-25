@@ -79,6 +79,54 @@ inline DType getmax(DType* x, size_t size) {
 }
 
 template<typename DType>
+void scale_data(DType* x, size_t size, float factor, MKL_INT8* x_out, int shift) {
+  const int omp_threads = mxnet::engine::OpenMP::Get()->GetRecommendedOMPThreadCount();
+  float foffset = 0.5;
+  #pragma omp parallel for num_threads(omp_threads)
+  for (size_t i = 0; i < size; ++i) {
+    if (x[i] > 0) {
+      foffset = 0.5;
+    } else if (x[i] == 0) {
+      foffset = 0.0;
+    } else {
+      foffset = -0.5;
+    }
+    x_out[i] = (MKL_INT8) (x[i] * factor + foffset) + shift;  //  ensure x >= 0
+  }
+}
+
+template<typename DType>
+void scale_back_data(MKL_INT32* x, size_t size, float factor, DType* x_out) {
+  const int omp_threads = mxnet::engine::OpenMP::Get()->GetRecommendedOMPThreadCount();
+  #pragma omp parallel for num_threads(omp_threads)
+  for (size_t i = 0; i < size; ++i) {
+    x_out[i] = x[i] / factor;  //  float
+  }
+}
+
+template<typename DType>
+void prepare_sum_data(MKL_INT8* x, int n, int k, MKL_INT32* x_out, DType transpose_b) {
+  const int omp_threads = mxnet::engine::OpenMP::Get()->GetRecommendedOMPThreadCount();
+  if (transpose_b) {
+    #pragma omp parallel for num_threads(omp_threads)
+    for (int i = 0; i < n; ++i) {
+      x_out[i] = 0;
+      for (int j = 0; j < k; ++j) {
+        x_out[i] += (-64) * x[i * k + j];
+      }
+    }
+  } else {
+    #pragma omp parallel for num_threads(omp_threads)
+    for (int i = 0; i < n; ++i) {
+      x_out[i] = 0;
+      for (int j = 0; j < k; ++j) {
+        x_out[i] += (-64) * x[j * n + i];
+      }
+    }
+  }
+}
+
+template<typename DType>
 void LstmForwardTrainingSingleLayer(DType* ws,
                                     DType* rs,
                                     bool state_outputs,
@@ -559,7 +607,7 @@ void LstmForwardInference_int8(DType* ws,
                           DType* b_ptr,
                           DType* y_ptr,
                           DType* hy_ptr,
-                          DType* cy_ptr) {
+                          DType* cy_ptr) {  
   const int total_layers = D * L;
   Tensor<cpu, 3, DType> hx(hx_ptr, Shape3(total_layers, N, H));
   Tensor<cpu, 3, DType> cx(cx_ptr, Shape3(total_layers, N, H));

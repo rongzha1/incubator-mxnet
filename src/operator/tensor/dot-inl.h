@@ -25,6 +25,7 @@
 #ifndef MXNET_OPERATOR_TENSOR_DOT_INL_H_
 #define MXNET_OPERATOR_TENSOR_DOT_INL_H_
 
+#include <mkl.h>
 #include <mxnet/operator_util.h>
 #include <vector>
 #include <algorithm>
@@ -34,7 +35,9 @@
 #include "../mshadow_op.h"
 #include "../elemwise_op_common.h"
 #include "./init_op.h"
+#include "../linalg.h"
 #include "../mxnet_op.h"
+#include "../rnn_impl.h"
 #ifdef __CUDACC__
 #include "./dot-inl.cuh"
 #endif  // __CUDACC__
@@ -1337,32 +1340,138 @@ void BatchDotForward_(const nnvm::NodeAttrs& attrs,
   CHECK(outputs[0].type_flag_ == kFloat32 || outputs[0].type_flag_ == kFloat64 ||
     (outputs[0].type_flag_ == kFloat16 && ctx.run_ctx.ctx.dev_mask() == mshadow::gpu::kDevMask))
     << "dot only supports float32/float64 for CPU, and float16/float32/float64 for GPU";
-  MSHADOW_REAL_TYPE_SWITCH(outputs[0].type_flag_, DType, {
-    mshadow::Tensor<xpu, 3, DType> out = outputs[0].get<xpu, 3, DType>(s);
-    mshadow::Tensor<xpu, 3, DType> mlhs = inputs[0].get<xpu, 3, DType>(s);
-    mshadow::Tensor<xpu, 3, DType> mrhs = inputs[1].get<xpu, 3, DType>(s);
-    mshadow::Tensor<xpu, 1, DType*> workspace =
-      ctx.requested[0].get_space_typed<xpu, 1, DType*>(mshadow::Shape1(3 * out.size(0)), s);
-    if (kNullOp != req[0]) {
-      if (param.transpose_a && param.transpose_b) {
-        mshadow::BatchGEMM<true, true>(out, mlhs, mrhs, (DType)1.0f,
-                                       (kAddTo == req[0]) ? (DType)1.0f : (DType)0.0f,
-                                       workspace);
-      } else if (!param.transpose_a && param.transpose_b) {
-        mshadow::BatchGEMM<false, true>(out, mlhs, mrhs, (DType)1.0f,
-                                       (kAddTo == req[0]) ? (DType)1.0f : (DType)0.0f,
-                                       workspace);
-      } else if (param.transpose_a && !param.transpose_b) {
-        mshadow::BatchGEMM<true, false>(out, mlhs, mrhs, (DType)1.0f,
-                                       (kAddTo == req[0]) ? (DType)1.0f : (DType)0.0f,
-                                       workspace);
+  if (ctx.is_train == 0) {  //  inference
+
+    MSHADOW_REAL_TYPE_SWITCH(outputs[0].type_flag_, DType, {
+      mshadow::Tensor<xpu, 3, DType> out = outputs[0].get<xpu, 3, DType>(s);
+      mshadow::Tensor<xpu, 3, DType> mlhs = inputs[0].get<xpu, 3, DType>(s);
+      mshadow::Tensor<xpu, 3, DType> mrhs = inputs[1].get<xpu, 3, DType>(s);
+      
+      MKL_INT8* mlhs_int8 = reinterpret_cast<MKL_INT8* >
+          (mkl_calloc(mlhs.shape_[1] * mlhs.shape_[2], sizeof(MKL_INT8), 64));
+      MKL_INT8* mrhs_int8 = reinterpret_cast<MKL_INT8* >
+          (mkl_calloc(mrhs.shape_[1] * mrhs.shape_[2], sizeof(MKL_INT8), 64));
+      size_t sum_size = param.transpose_b ? mrhs.shape_[1] : mrhs.shape_[2];
+      MKL_INT32* mrhs_sum_int8 = reinterpret_cast<MKL_INT32* >
+          (mkl_calloc(sum_size, sizeof(MKL_INT32), 64));
+      MKL_INT32* out_int8 = reinterpret_cast<MKL_INT32* >
+      (mkl_calloc(out.shape_[1] * out.shape_[2], sizeof(MKL_INT32), 64));
+      CBLAS_TRANSPOSE trans_a = param.transpose_a ? CblasTrans : CblasNoTrans;
+      CBLAS_TRANSPOSE trans_b = param.transpose_b ? CblasTrans : CblasNoTrans;
+      CBLAS_LAYOUT layout = CblasRowMajor;
+      MKL_INT m = param.transpose_a ? (MKL_INT)mlhs.shape_[2] : (MKL_INT)mlhs.shape_[1];
+      MKL_INT n = param.transpose_b ? (MKL_INT)mrhs.shape_[1] : (MKL_INT)mrhs.shape_[2];
+      MKL_INT k = param.transpose_b ? (MKL_INT)mrhs.shape_[2] : (MKL_INT)mrhs.shape_[1];
+      MKL_INT lda = 0, ldb = 0, ldc = 0;
+      if (layout == CblasRowMajor && trans_a == CblasNoTrans) {
+        lda = k;
+      } else if (layout == CblasColMajor && trans_a == CblasTrans) {
+        lda = k;
       } else {
-        mshadow::BatchGEMM<false, false>(out, mlhs, mrhs, (DType)1.0f,
-                                       (kAddTo == req[0]) ? (DType)1.0f : (DType)0.0f,
-                                       workspace);
+        lda = m;
       }
-    }
-  });
+      if (layout == CblasRowMajor && trans_b == CblasNoTrans) {
+        ldb = n;
+      } else if (layout == CblasColMajor && trans_b == CblasTrans) {
+        ldb = n;
+      } else {
+        ldb = k;
+      }
+      ldc = (layout == CblasRowMajor) ? n : m;
+      
+      DType alpha = 1.0;
+      DType beta = 0.0;
+      MKL_INT  ao = 0, bo = 0;
+      for (int i = 0; i < out.shape_[0]; i++) {
+        //linalg_gemm(mlhs[i], mrhs[i], out[i], (DType)1.0f, (DType)0.0f, param.transpose_a, param.transpose_b);
+        /*
+        if(i == 0) {
+          LOG(INFO) << "m:" << m << " n:" << n << " k:" << k;
+          LOG(INFO) << "param.transpose_a:" << param.transpose_a << " param.transpose_b:" << param.transpose_b;
+          for (int j = 0; j < (int)m * (int)k; j++) {
+            LOG(INFO) << "mlhs[i].dptr_[" << j << "]:" << mlhs[i].dptr_[j];
+          }
+          for (int j = 0; j < (int)k * (int)n; j++) {
+            LOG(INFO) << "mrhs[i].dptr_[" << j << "]:" << mrhs[i].dptr_[j];
+          }
+          for (int j = 0; j < (int)m * (int)n; j++) {
+            LOG(INFO) << "out[i].dptr_[" << j << "]:" << out[i].dptr_[j];
+          }
+        }
+        */
+
+        float factor_l = 63 / getmax(mlhs[i].dptr_, mlhs.shape_[1] * mlhs.shape_[2]);
+        float factor_r = 63 / getmax(mrhs[i].dptr_, mrhs.shape_[1] * mrhs.shape_[2]);
+        scale_data(mlhs[i].dptr_, mlhs.shape_[1] * mlhs.shape_[2], factor_l, mlhs_int8, 64);
+        scale_data(mrhs[i].dptr_, mrhs.shape_[1] * mrhs.shape_[2], factor_r, mrhs_int8, 0);
+        prepare_sum_data(mrhs_int8, (int)n, (int)k, mrhs_sum_int8, (int)param.transpose_b);
+
+/*  test code
+        MKL_INT32 co = 0;
+        cblas_gemm_s8u8s32(layout, trans_a, trans_b, CblasFixOffset,
+          m, n, k, alpha, (MKL_INT8*) mlhs[i].dptr_, lda, ao, (MKL_INT8*) mrhs[i].dptr_, ldb, bo, beta,
+          (MKL_INT32*) out[i].dptr_, ldc, &co);
+*/
+
+        cblas_gemm_s8u8s32(layout, trans_a, trans_b, CblasRowOffset,
+          m, n, k, alpha, mlhs_int8, lda, ao, mrhs_int8, ldb, bo, beta,
+          out_int8, ldc, mrhs_sum_int8);
+        scale_back_data(out_int8, out.shape_[1] * out.shape_[2], factor_l * factor_r, out[i].dptr_);
+
+        /*
+        if(i == 0) {
+          LOG(INFO) << "factor_l:" << factor_l << " factor_r:" << factor_r;
+          for (int j = 0; j < (int)m * (int)k ; j++) {
+            LOG(INFO) << "mlhs_int8[" << j << "]:" << (int)mlhs_int8[j];
+          }
+          for (int j = 0; j < (int)k * (int)n ; j++) {           
+            LOG(INFO) << "mrhs_int8[" << j << "]:" << (int)mrhs_int8[j];
+          }
+          for (int j = 0; j < (int)n ; j++) {
+            LOG(INFO) << "mrhs_sum_int8[" << j << "]:" << (int)mrhs_sum_int8[j];
+          }        
+          for (int j = 0; j < (int)m * (int)n ; j++) {
+            LOG(INFO) << "out_int8[" << j << "]:" << (int)out_int8[j];        
+            LOG(INFO) << "out[i].dptr_[" << j << "]:" << out[i].dptr_[j];
+          }
+        }
+        */
+      }
+      mkl_free(mlhs_int8);
+      mkl_free(mrhs_int8);
+      mkl_free(mrhs_sum_int8);
+      mkl_free(out_int8);
+      
+    });
+
+  } else {
+    MSHADOW_REAL_TYPE_SWITCH(outputs[0].type_flag_, DType, {
+      mshadow::Tensor<xpu, 3, DType> out = outputs[0].get<xpu, 3, DType>(s);
+      mshadow::Tensor<xpu, 3, DType> mlhs = inputs[0].get<xpu, 3, DType>(s);
+      mshadow::Tensor<xpu, 3, DType> mrhs = inputs[1].get<xpu, 3, DType>(s);
+      mshadow::Tensor<xpu, 1, DType*> workspace =
+        ctx.requested[0].get_space_typed<xpu, 1, DType*>(mshadow::Shape1(3 * out.size(0)), s);
+      if (kNullOp != req[0]) {
+        if (param.transpose_a && param.transpose_b) {
+          mshadow::BatchGEMM<true, true>(out, mlhs, mrhs, (DType)1.0f,
+                                         (kAddTo == req[0]) ? (DType)1.0f : (DType)0.0f,
+                                         workspace);
+        } else if (!param.transpose_a && param.transpose_b) {
+          mshadow::BatchGEMM<false, true>(out, mlhs, mrhs, (DType)1.0f,
+                                         (kAddTo == req[0]) ? (DType)1.0f : (DType)0.0f,
+                                         workspace);
+        } else if (param.transpose_a && !param.transpose_b) {
+          mshadow::BatchGEMM<true, false>(out, mlhs, mrhs, (DType)1.0f,
+                                         (kAddTo == req[0]) ? (DType)1.0f : (DType)0.0f,
+                                         workspace);
+        } else {
+          mshadow::BatchGEMM<false, false>(out, mlhs, mrhs, (DType)1.0f,
+                                         (kAddTo == req[0]) ? (DType)1.0f : (DType)0.0f,
+                                         workspace);
+        }
+      }
+    });
+  }
 }
 
 template<typename xpu>
