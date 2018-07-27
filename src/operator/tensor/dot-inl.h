@@ -1384,58 +1384,12 @@ void BatchDotForward_(const nnvm::NodeAttrs& attrs,
       MKL_INT  ao = 0, bo = 0;
       for (int i = 0; i < out.shape_[0]; i++) {
         //linalg_gemm(mlhs[i], mrhs[i], out[i], (DType)1.0f, (DType)0.0f, param.transpose_a, param.transpose_b);
-        /*
-        if(i == 0) {
-          LOG(INFO) << "m:" << m << " n:" << n << " k:" << k;
-          LOG(INFO) << "param.transpose_a:" << param.transpose_a << " param.transpose_b:" << param.transpose_b;
-          for (int j = 0; j < (int)m * (int)k; j++) {
-            LOG(INFO) << "mlhs[i].dptr_[" << j << "]:" << mlhs[i].dptr_[j];
-          }
-          for (int j = 0; j < (int)k * (int)n; j++) {
-            LOG(INFO) << "mrhs[i].dptr_[" << j << "]:" << mrhs[i].dptr_[j];
-          }
-          for (int j = 0; j < (int)m * (int)n; j++) {
-            LOG(INFO) << "out[i].dptr_[" << j << "]:" << out[i].dptr_[j];
-          }
-        }
-        */
-
-        float factor_l = 63 / getmax(mlhs[i].dptr_, mlhs.shape_[1] * mlhs.shape_[2]);
-        float factor_r = 63 / getmax(mrhs[i].dptr_, mrhs.shape_[1] * mrhs.shape_[2]);
-        scale_data(mlhs[i].dptr_, mlhs.shape_[1] * mlhs.shape_[2], factor_l, mlhs_int8, 64);
-        scale_data(mrhs[i].dptr_, mrhs.shape_[1] * mrhs.shape_[2], factor_r, mrhs_int8, 0);
-        prepare_sum_data(mrhs_int8, (int)n, (int)k, mrhs_sum_int8, (int)param.transpose_b);
-
-/*  test code
-        MKL_INT32 co = 0;
-        cblas_gemm_s8u8s32(layout, trans_a, trans_b, CblasFixOffset,
-          m, n, k, alpha, (MKL_INT8*) mlhs[i].dptr_, lda, ao, (MKL_INT8*) mrhs[i].dptr_, ldb, bo, beta,
-          (MKL_INT32*) out[i].dptr_, ldc, &co);
-*/
-
+        float factor_lr = quantilize(mlhs[i].dptr_, mrhs[i].dptr_, (int)m, (int)n, (int)k,
+            mlhs_int8, mrhs_int8, mrhs_sum_int8, (int)param.transpose_b);        
         cblas_gemm_s8u8s32(layout, trans_a, trans_b, CblasRowOffset,
           m, n, k, alpha, mlhs_int8, lda, ao, mrhs_int8, ldb, bo, beta,
           out_int8, ldc, mrhs_sum_int8);
-        scale_back_data(out_int8, out.shape_[1] * out.shape_[2], factor_l * factor_r, out[i].dptr_);
-
-        /*
-        if(i == 0) {
-          LOG(INFO) << "factor_l:" << factor_l << " factor_r:" << factor_r;
-          for (int j = 0; j < (int)m * (int)k ; j++) {
-            LOG(INFO) << "mlhs_int8[" << j << "]:" << (int)mlhs_int8[j];
-          }
-          for (int j = 0; j < (int)k * (int)n ; j++) {           
-            LOG(INFO) << "mrhs_int8[" << j << "]:" << (int)mrhs_int8[j];
-          }
-          for (int j = 0; j < (int)n ; j++) {
-            LOG(INFO) << "mrhs_sum_int8[" << j << "]:" << (int)mrhs_sum_int8[j];
-          }        
-          for (int j = 0; j < (int)m * (int)n ; j++) {
-            LOG(INFO) << "out_int8[" << j << "]:" << (int)out_int8[j];        
-            LOG(INFO) << "out[i].dptr_[" << j << "]:" << out[i].dptr_[j];
-          }
-        }
-        */
+        dequantilize(out_int8, out.shape_[1] * out.shape_[2], factor_lr, out[i].dptr_);   
       }
       mkl_free(mlhs_int8);
       mkl_free(mrhs_int8);

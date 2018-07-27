@@ -96,15 +96,6 @@ void scale_data(DType* x, size_t size, float factor, MKL_INT8* x_out, int shift)
 }
 
 template<typename DType>
-void scale_back_data(MKL_INT32* x, size_t size, float factor, DType* x_out) {
-  const int omp_threads = mxnet::engine::OpenMP::Get()->GetRecommendedOMPThreadCount();
-  #pragma omp parallel for num_threads(omp_threads)
-  for (size_t i = 0; i < size; ++i) {
-    x_out[i] = x[i] / factor;  //  float
-  }
-}
-
-template<typename DType>
 void prepare_sum_data(MKL_INT8* x, int n, int k, MKL_INT32* x_out, DType transpose_b) {
   const int omp_threads = mxnet::engine::OpenMP::Get()->GetRecommendedOMPThreadCount();
   if (transpose_b) {
@@ -126,6 +117,25 @@ void prepare_sum_data(MKL_INT8* x, int n, int k, MKL_INT32* x_out, DType transpo
   }
 }
 
+template<typename DType>
+inline DType quantilize(DType* x, DType* y, int m, int n, int k, MKL_INT8* x_int8,
+                        MKL_INT8* y_int8, MKL_INT32* sum_int8, int transpose_b) {
+  float factor_l = 63 / getmax(x, m * k);
+  float factor_r = 127 / getmax(y, k * n);
+  scale_data(x, m * k, factor_l, x_int8, 64);
+  scale_data(y, k * n, factor_r, y_int8, 0);
+  prepare_sum_data(y_int8, (int)n, (int)k, sum_int8, transpose_b);
+  return factor_l * factor_r;
+}
+
+template<typename DType>
+void dequantilize(MKL_INT32* x, size_t size, float factor, DType* x_out) {
+  const int omp_threads = mxnet::engine::OpenMP::Get()->GetRecommendedOMPThreadCount();
+  #pragma omp parallel for num_threads(omp_threads)
+  for (size_t i = 0; i < size; ++i) {
+    x_out[i] = x[i] / factor;  //  float
+  }
+}
 template<typename DType>
 void LstmForwardTrainingSingleLayer(DType* ws,
                                     DType* rs,

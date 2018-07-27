@@ -170,7 +170,8 @@ def test(args):
 
     if not args.stack_rnn:
         stack = mx.rnn.FusedRNNCell(args.num_hidden, num_layers=args.num_layers,
-                mode=args.rnntype, bidirectional=args.bidirectional).unfuse()
+                mode=args.rnntype, bidirectional=args.bidirectional)
+
     else:
         stack = mx.rnn.SequentialRNNCell()
         for i in range(args.num_layers):
