@@ -1385,7 +1385,7 @@ void BatchDotForward_(const nnvm::NodeAttrs& attrs,
       for (int i = 0; i < out.shape_[0]; i++) {
         //linalg_gemm(mlhs[i], mrhs[i], out[i], (DType)1.0f, (DType)0.0f, param.transpose_a, param.transpose_b);
         float factor_lr = quantilize(mlhs[i].dptr_, mrhs[i].dptr_, (int)m, (int)n, (int)k,
-            mlhs_int8, mrhs_int8, mrhs_sum_int8, (int)param.transpose_b);        
+            mlhs_int8, mrhs_int8, mrhs_sum_int8, (int)param.transpose_b, true);        
         cblas_gemm_s8u8s32(layout, trans_a, trans_b, CblasRowOffset,
           m, n, k, alpha, mlhs_int8, lda, ao, mrhs_int8, ldb, bo, beta,
           out_int8, ldc, mrhs_sum_int8);

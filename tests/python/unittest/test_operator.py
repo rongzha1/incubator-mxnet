@@ -157,6 +157,32 @@ def test_gru_int8_infer():
     check_rnn_consistency_int8(fused, stack, T, N, I, H, 'write')
 
 @with_seed()
+def test_gru_int8_bi_infer():
+    T, N, I, H = 5, 32, 800, 800
+    T, N, I, H = 60, 128, 256, 512
+    T, N, I, H = 30, 64, 256, 256
+    fused = mx.rnn.FusedRNNCell(H, num_layers=3, mode='gru',
+                                bidirectional=True, get_next_state=True, prefix='')
+
+    stack = mx.rnn.SequentialRNNCell()
+    stack.add(mx.rnn.BidirectionalCell(
+                mx.rnn.GRUCell(H, prefix='l0_'),
+                mx.rnn.GRUCell(H, prefix='r0_'),
+                output_prefix='bi_gru_0_'))
+    
+    stack.add(mx.rnn.BidirectionalCell(
+                mx.rnn.GRUCell(H, prefix='l1_'),
+                mx.rnn.GRUCell(H, prefix='r1_'),
+                output_prefix='bi_gru_1_'))
+    
+    stack.add(mx.rnn.BidirectionalCell(
+                mx.rnn.GRUCell(H, prefix='l2_'),
+                mx.rnn.GRUCell(H, prefix='r2_'),
+                output_prefix='bi_gru_2_'))
+
+    check_rnn_consistency_int8(fused, stack, T, N, I, H, 'write')
+
+@with_seed()
 def test_lstm_int8_infer():
     T, N, I, H = 5, 32, 800, 800
     T, N, I, H = 60, 128, 256, 512
@@ -178,7 +204,7 @@ def test_lstm_int8_bi_infer():
     T, N, I, H = 5, 32, 800, 800
     T, N, I, H = 60, 128, 256, 512
     T, N, I, H = 30, 64, 256, 256
-    fused = mx.rnn.FusedRNNCell(H, num_layers=2, mode='lstm',
+    fused = mx.rnn.FusedRNNCell(H, num_layers=5, mode='lstm',
                                 bidirectional=True, get_next_state=True, prefix='')
 
     stack = mx.rnn.SequentialRNNCell()
@@ -191,7 +217,7 @@ def test_lstm_int8_bi_infer():
                 mx.rnn.LSTMCell(H, prefix='l1_'),
                 mx.rnn.LSTMCell(H, prefix='r1_'),
                 output_prefix='bi_lstm_1_'))
-    '''
+    
     stack.add(mx.rnn.BidirectionalCell(
                 mx.rnn.LSTMCell(H, prefix='l2_'),
                 mx.rnn.LSTMCell(H, prefix='r2_'),
@@ -206,7 +232,7 @@ def test_lstm_int8_bi_infer():
                 mx.rnn.LSTMCell(H, prefix='l4_'),
                 mx.rnn.LSTMCell(H, prefix='r4_'),
                 output_prefix='bi_lstm_4_'))
-    '''
+    
     check_rnn_consistency_int8(fused, stack, T, N, I, H, 'write')
 
 @with_seed()
