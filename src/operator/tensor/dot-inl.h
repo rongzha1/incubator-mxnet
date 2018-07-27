@@ -1341,12 +1341,10 @@ void BatchDotForward_(const nnvm::NodeAttrs& attrs,
     (outputs[0].type_flag_ == kFloat16 && ctx.run_ctx.ctx.dev_mask() == mshadow::gpu::kDevMask))
     << "dot only supports float32/float64 for CPU, and float16/float32/float64 for GPU";
   if (ctx.is_train == 0) {  //  inference
-
     MSHADOW_REAL_TYPE_SWITCH(outputs[0].type_flag_, DType, {
       mshadow::Tensor<xpu, 3, DType> out = outputs[0].get<xpu, 3, DType>(s);
       mshadow::Tensor<xpu, 3, DType> mlhs = inputs[0].get<xpu, 3, DType>(s);
       mshadow::Tensor<xpu, 3, DType> mrhs = inputs[1].get<xpu, 3, DType>(s);
-      
       MKL_INT8* mlhs_int8 = reinterpret_cast<MKL_INT8* >
           (mkl_calloc(mlhs.shape_[1] * mlhs.shape_[2], sizeof(MKL_INT8), 64));
       MKL_INT8* mrhs_int8 = reinterpret_cast<MKL_INT8* >
@@ -1378,24 +1376,24 @@ void BatchDotForward_(const nnvm::NodeAttrs& attrs,
         ldb = k;
       }
       ldc = (layout == CblasRowMajor) ? n : m;
-      
       DType alpha = 1.0;
       DType beta = 0.0;
       MKL_INT  ao = 0, bo = 0;
       for (int i = 0; i < out.shape_[0]; i++) {
-        //linalg_gemm(mlhs[i], mrhs[i], out[i], (DType)1.0f, (DType)0.0f, param.transpose_a, param.transpose_b);
-        float factor_lr = quantilize(mlhs[i].dptr_, mrhs[i].dptr_, (int)m, (int)n, (int)k,
-            mlhs_int8, mrhs_int8, mrhs_sum_int8, (int)param.transpose_b, true);        
+        //  linalg_gemm(mlhs[i], mrhs[i], out[i], (DType)1.0f,
+        //        (DType)0.0f, param.transpose_a, param.transpose_b);
+        float factor_lr = quantilize(mlhs[i].dptr_, mrhs[i].dptr_, reinterpret_cast<int>(m),
+            reinterpret_cast<int>(n), reinterpret_cast<int>(k),
+            mlhs_int8, mrhs_int8, mrhs_sum_int8, param.transpose_b, true);
         cblas_gemm_s8u8s32(layout, trans_a, trans_b, CblasRowOffset,
           m, n, k, alpha, mlhs_int8, lda, ao, mrhs_int8, ldb, bo, beta,
           out_int8, ldc, mrhs_sum_int8);
-        dequantilize(out_int8, out.shape_[1] * out.shape_[2], factor_lr, out[i].dptr_);   
+        dequantilize(out_int8, out.shape_[1] * out.shape_[2], factor_lr, out[i].dptr_);
       }
       mkl_free(mlhs_int8);
       mkl_free(mrhs_int8);
       mkl_free(mrhs_sum_int8);
       mkl_free(out_int8);
-      
     });
 
   } else {

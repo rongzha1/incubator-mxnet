@@ -124,8 +124,9 @@ inline DType quantilize(DType* x, DType* y, int m, int n, int k, MKL_INT8* x_int
   float factor_r = 127 / getmax(y, k * n);
   scale_data(x, m * k, factor_l, x_int8, 64);
   scale_data(y, k * n, factor_r, y_int8, 0);
-  if(recalculate)
-      prepare_sum_data(y_int8, (int)n, (int)k, sum_int8, transpose_b);
+  if (recalculate) {
+      prepare_sum_data(y_int8, n, k, sum_int8, transpose_b);
+  }
   return factor_l * factor_r;
 }
 
@@ -453,7 +454,8 @@ void LstmForwardInferenceSingleLayer_int8(DType* ws,
       (mkl_calloc(N * 4 * H, sizeof(MKL_INT32), 64));
 
   //  linalg_gemm(x, wx, yx_flat, alpha, beta, false, true);
-  float factor_lr = quantilize(x.dptr_, wx.dptr_, N * T, 4 * H, I, x_int8, wx_int8, wx_sum_int8, 1, true);
+  float factor_lr = quantilize(x.dptr_, wx.dptr_, N * T, 4 * H, I,
+      x_int8, wx_int8, wx_sum_int8, 1, true);
   cblas_gemm_s8u8s32(CblasRowMajor, CblasNoTrans, CblasTrans, CblasRowOffset,
       N * T, 4 * H, I, alpha, x_int8, I, ao, wx_int8, I, bo, beta,
       yx_flat_int8, 4 * H, wx_sum_int8);
@@ -464,7 +466,8 @@ void LstmForwardInferenceSingleLayer_int8(DType* ws,
 
     //  linalg_gemm(i ? h : hx, wh, yh_flat, alpha, beta, false, true);
     DType* ht_1 = i ? h.dptr_ : hx.dptr_;
-    factor_lr = quantilize(ht_1, wh.dptr_, N, 4 * H, H, h_int8, wh_int8, wh_sum_int8, 1, i ? false : true);
+    factor_lr = quantilize(ht_1, wh.dptr_, N, 4 * H, H, h_int8, wh_int8,
+        wh_sum_int8, 1, i ? false : true);
     cblas_gemm_s8u8s32(CblasRowMajor, CblasNoTrans, CblasTrans,
         CblasRowOffset, N, 4 * H, H, alpha, h_int8, H, ao,
         wh_int8, H, bo, beta, yh_flat_int8, 4 * H, wh_sum_int8);
@@ -499,7 +502,6 @@ void LstmForwardInferenceSingleLayer_int8(DType* ws,
   mkl_free(yx_flat_int8);
   mkl_free(yh_flat_int8);
   mkl_free(h_int8);
-
 }
 
 template <typename DType>
@@ -518,7 +520,7 @@ void LstmForwardInference_int8(DType* ws,
                           DType* b_ptr,
                           DType* y_ptr,
                           DType* hy_ptr,
-                          DType* cy_ptr) {  
+                          DType* cy_ptr) {
   const int total_layers = D * L;
   Tensor<cpu, 3, DType> hx(hx_ptr, Shape3(total_layers, N, H));
   Tensor<cpu, 3, DType> cx(cx_ptr, Shape3(total_layers, N, H));
@@ -885,7 +887,7 @@ void GruForwardInferenceSingleLayer_int8(DType* ws,
   // x * wx.T : [T * N, I] * [I, 3 * H]
   DType alpha = 1.0;
   DType beta = 0.0;
-  MKL_INT  ao = 0, bo = 0;  
+  MKL_INT  ao = 0, bo = 0;
   MKL_INT8* x_int8 = reinterpret_cast<MKL_INT8* > (mkl_calloc(T * N * I, sizeof(MKL_INT8), 64));
   MKL_INT8* wx_int8 = reinterpret_cast<MKL_INT8* > (mkl_calloc(3 * H * I, sizeof(MKL_INT8), 64));
   MKL_INT8* wh_int8 = reinterpret_cast<MKL_INT8* > (mkl_calloc(3 * H * H, sizeof(MKL_INT8), 64));
@@ -919,7 +921,8 @@ void GruForwardInferenceSingleLayer_int8(DType* ws,
       reinterpret_cast<float *>(x.dptr_), I, reinterpret_cast<float *>(wx_ptr),
       I, beta, reinterpret_cast<float *>(gemmC1), 3 * H);
  */
-  float factor_lr = quantilize(x.dptr_, wx.dptr_, N * T, 3 * H, I, x_int8, wx_int8, wx_sum_int8, 1, true);
+  float factor_lr = quantilize(x.dptr_, wx.dptr_, N * T, 3 * H, I, x_int8,
+      wx_int8, wx_sum_int8, 1, true);
   cblas_gemm_s8u8s32(CblasRowMajor, CblasNoTrans, CblasTrans, CblasRowOffset,
       N * T, 3 * H, I, alpha, x_int8, I, ao, wx_int8, I, bo, beta,
       gemmC1_int8, 3 * H, wx_sum_int8);
@@ -936,10 +939,9 @@ void GruForwardInferenceSingleLayer_int8(DType* ws,
     cblas_gemm_s8u8s32(CblasRowMajor, CblasNoTrans, CblasTrans, CblasRowOffset,
         N * T, 3 * H, I, alpha, x_int8, I, ao, back_wx_int8, I, bo, beta,
         back_gemmC1_int8, 3 * H, back_wx_sum_int8);
-    dequantilize(back_gemmC1_int8, T * N * 3 * H, factor_lr, back_gemmC1);    
+    dequantilize(back_gemmC1_int8, T * N * 3 * H, factor_lr, back_gemmC1);
   }
 
-  
   for (int t = 0; t < T; t++) {
     //  perform the first direction, X * wx and H * wh for each step
     //  ht-1 * wh, ht-1:[N, H] wh:[3 * H, H]
@@ -958,13 +960,14 @@ void GruForwardInferenceSingleLayer_int8(DType* ws,
       dht_1_tmp = reshape(dht_1.T(), Shape3(D, H, N));
       h_l = dht_1_tmp[0].dptr_;
     }
-    
-    factor_lr = quantilize(h_l, wh.dptr_, N, 3 * H, H, ht_1_int8, wh_int8, wh_sum_int8, 1, t ? false : true);
+
+    factor_lr = quantilize(h_l, wh.dptr_, N, 3 * H, H, ht_1_int8, wh_int8,
+        wh_sum_int8, 1, t ? false : true);
     cblas_gemm_s8u8s32(CblasRowMajor, CblasNoTrans, CblasTrans,
         CblasRowOffset, N, 3 * H, H, alpha, ht_1_int8, H, ao,
         wh_int8, H, bo, beta, gemmC2_int8, 3 * H, wh_sum_int8);
     dequantilize(gemmC2_int8, N * 3 * H, factor_lr, gemmC2);
-    
+
     gemmC1_t = gemmC1 + t * N * 3 * H;
     #pragma omp parallel for num_threads(omp_threads)
     for (int i = 0; i < N; ++i) {
@@ -1011,7 +1014,7 @@ void GruForwardInferenceSingleLayer_int8(DType* ws,
           CblasRowOffset, N, 3 * H, H, alpha, back_ht_1_int8, H, ao,
           back_wh_int8, H, bo, beta, gemmC2_int8, 3 * H, back_wh_sum_int8);
       dequantilize(gemmC2_int8, N * 3 * H, factor_lr, gemmC2);
-      
+
       #pragma omp parallel for num_threads(omp_threads)
       for (int i = 0; i < N; ++i) {
         for (int j = 0; j < H; ++j) {
