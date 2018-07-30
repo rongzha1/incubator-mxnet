@@ -1324,7 +1324,7 @@ void DotBackwardEx(const nnvm::NodeAttrs& attrs,
 }
 
 template<typename xpu>
-void BatchDotForward_(const nnvm::NodeAttrs& attrs,
+void BatchDotForward_CPU_(const nnvm::NodeAttrs& attrs,
                       const OpContext& ctx,
                       const std::vector<TBlob>& inputs,
                       const std::vector<OpReqType>& req,
@@ -1424,6 +1424,52 @@ void BatchDotForward_(const nnvm::NodeAttrs& attrs,
       }
     });
   }
+}
+
+template<typename xpu>
+void BatchDotForward_(const nnvm::NodeAttrs& attrs,
+                      const OpContext& ctx,
+                      const std::vector<TBlob>& inputs,
+                      const std::vector<OpReqType>& req,
+                      const std::vector<TBlob>& outputs) {
+  using namespace mshadow;
+  using namespace mshadow::expr;
+  mshadow::Stream<xpu> *s = ctx.get_stream<xpu>();
+  const DotParam& param = nnvm::get<DotParam>(attrs.parsed);
+  CHECK_EQ(outputs[0].type_flag_, inputs[0].type_flag_)
+      << "Binary function only support input/output with the same type";
+  CHECK_EQ(outputs[0].type_flag_, inputs[1].type_flag_)
+      << "Binary function only support input/output with the same type";
+  CHECK(outputs[0].type_flag_ == kFloat32 || outputs[0].type_flag_ == kFloat64 ||
+    (outputs[0].type_flag_ == kFloat16 && ctx.run_ctx.ctx.dev_mask() == mshadow::gpu::kDevMask))
+    << "dot only supports float32/float64 for CPU, and float16/float32/float64 for GPU";
+  
+  MSHADOW_REAL_TYPE_SWITCH(outputs[0].type_flag_, DType, {
+    mshadow::Tensor<xpu, 3, DType> out = outputs[0].get<xpu, 3, DType>(s);
+    mshadow::Tensor<xpu, 3, DType> mlhs = inputs[0].get<xpu, 3, DType>(s);
+    mshadow::Tensor<xpu, 3, DType> mrhs = inputs[1].get<xpu, 3, DType>(s);
+    mshadow::Tensor<xpu, 1, DType*> workspace =
+      ctx.requested[0].get_space_typed<xpu, 1, DType*>(mshadow::Shape1(3 * out.size(0)), s);
+    if (kNullOp != req[0]) {
+      if (param.transpose_a && param.transpose_b) {
+        mshadow::BatchGEMM<true, true>(out, mlhs, mrhs, (DType)1.0f,
+                                       (kAddTo == req[0]) ? (DType)1.0f : (DType)0.0f,
+                                       workspace);
+      } else if (!param.transpose_a && param.transpose_b) {
+        mshadow::BatchGEMM<false, true>(out, mlhs, mrhs, (DType)1.0f,
+                                       (kAddTo == req[0]) ? (DType)1.0f : (DType)0.0f,
+                                       workspace);
+      } else if (param.transpose_a && !param.transpose_b) {
+        mshadow::BatchGEMM<true, false>(out, mlhs, mrhs, (DType)1.0f,
+                                       (kAddTo == req[0]) ? (DType)1.0f : (DType)0.0f,
+                                       workspace);
+      } else {
+        mshadow::BatchGEMM<false, false>(out, mlhs, mrhs, (DType)1.0f,
+                                       (kAddTo == req[0]) ? (DType)1.0f : (DType)0.0f,
+                                       workspace);
+      }
+    }
+  });
 }
 
 template<typename xpu>

@@ -136,7 +136,7 @@ which is computed by::
   [](const NodeAttrs& attrs) {
     return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
   })
-.set_attr<FCompute>("FCompute<cpu>", BatchDotForward_<cpu>)
+.set_attr<FCompute>("FCompute<cpu>", BatchDotForward_CPU_<cpu>)
 .set_attr<nnvm::FGradient>("FGradient", ElemwiseGradUseIn{"_backward_batch_dot"})
 .add_argument("lhs", "NDArray-or-Symbol", "The first input")
 .add_argument("rhs", "NDArray-or-Symbol", "The second input")
