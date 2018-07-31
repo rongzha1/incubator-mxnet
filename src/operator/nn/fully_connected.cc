@@ -128,7 +128,11 @@ void FullyConnectedComputeExCPU(const nnvm::NodeAttrs& attrs,
     for (size_t i = 0; i < in_blobs.size(); i++) in_blobs[i] = inputs[i].data();
     std::vector<TBlob> out_blobs(outputs.size());
     for (size_t i = 0; i < out_blobs.size(); i++) out_blobs[i] = outputs[i].data();
-    FullyConnectedCompute<cpu>(attrs, ctx, in_blobs, req, out_blobs);
+    if (ctx.is_train == 0) { //inference
+      FullyConnectedCompute_int8<cpu>(attrs, ctx, in_blobs, req, out_blobs);
+    } else {
+      FullyConnectedCompute<cpu>(attrs, ctx, in_blobs, req, out_blobs);
+    }
   } else {
     LogUnimplementedOp(attrs, ctx, inputs, req, outputs);
   }
