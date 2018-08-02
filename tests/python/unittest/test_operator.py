@@ -264,6 +264,42 @@ def test_batch_dot_int8():
         outputs = exe.forward(is_train=False, a=a_npy, b=b_npy)
         assert_almost_equal(outputs[0].asnumpy(), c_npy, rtol=1e-2, atol=1e-2)
 
+@with_seed()
+def test_fc_int8():
+    net = mx.symbol.Variable('data')
+    m, n, k = 1000, 3000, 2000
+    net = mx.symbol.FullyConnected(data=net, name='fc1', num_hidden=k)
+    data_shape = (m,n)
+    weight_shape = (k, n)
+    bias_shape = (k)
+    #closer to sockeye data range
+    data = mx.random.uniform(-1, 1, data_shape, ctx=mx.cpu())
+    weight = mx.random.uniform(-0.01, 0.01, weight_shape, ctx=mx.cpu())
+    bias = mx.random.uniform(-0.01, 0.01, bias_shape, ctx=mx.cpu())
+    
+    exe = net.bind(
+        mx.cpu(), 
+        args={
+            'data':data, 
+            'fc1_weight':weight, 
+            'fc1_bias':bias
+        }
+    )
+    fwd1 = exe.forward(is_train=False)
+
+    net2 = mx.symbol.Variable('data')
+    net2 = mx.symbol.FullyConnected(data=net2, name='fc1', num_hidden=k)
+    exe2 = net.bind(
+        mx.cpu(), 
+        args={
+            'data':data, 
+            'fc1_weight':weight, 
+            'fc1_bias':bias
+        }
+    )
+    fwd2 = exe2.forward(is_train=True)
+    assert_allclose(fwd1[0].asnumpy(), fwd2[0].asnumpy(), rtol=1e-2, atol=1e-2)
+
 
 @with_seed()
 @assert_raises_cudnn_disabled()
