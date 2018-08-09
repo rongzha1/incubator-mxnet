@@ -86,7 +86,7 @@ void scale_data(DType* x, size_t size, float factor, MKL_INT8* x_out, int shift)
   for (size_t i = 0; i < size; ++i) {
     if (x[i] > 0) {
       foffset = 0.5;
-    } else if (x[i] == 0) {
+    } else if (x[i] == 0.0) {
       foffset = 0.0;
     } else {
       foffset = -0.5;
