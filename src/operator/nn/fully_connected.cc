@@ -29,7 +29,7 @@
 #include "../nnpack/nnpack_fully_connected-inl.h"
 #endif  // MXNET_USE_NNPACK
 
-bool bCalTime = false;
+bool bCalTime = getenv("TIMELOG") ? true: false;
 long fc_mkl_time = 0;
 long fc_q_time = 0;
 long fc_dq_time = 0;

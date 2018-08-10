@@ -42,8 +42,8 @@
 #ifdef __CUDACC__
 #include "./dot-inl.cuh"
 #endif  // __CUDACC__
-
-bool bdCalTime = false;
+ 
+bool bdCalTime = getenv("TIMELOG") ? true: false;;
 long bd_mkl_time = 0;
 long bd_q_time = 0;
 long bd_dq_time = 0;
