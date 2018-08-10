@@ -31,6 +31,7 @@
 #include <algorithm>
 #include <utility>
 #include <type_traits>
+#include <sys/time.h>
 #include "./util/tensor_util-inl.h"
 #include "../mshadow_op.h"
 #include "../elemwise_op_common.h"
@@ -41,6 +42,12 @@
 #ifdef __CUDACC__
 #include "./dot-inl.cuh"
 #endif  // __CUDACC__
+
+bool bdCalTime = false;
+long bd_mkl_time = 0;
+long bd_q_time = 0;
+long bd_dq_time = 0;
+long bd_gemm_time = 0;
 
 namespace mxnet {
 namespace op {
@@ -1345,6 +1352,12 @@ void BatchDotForward_CPU_(const nnvm::NodeAttrs& attrs,
       mshadow::Tensor<xpu, 3, DType> out = outputs[0].get<xpu, 3, DType>(s);
       mshadow::Tensor<xpu, 3, DType> mlhs = inputs[0].get<xpu, 3, DType>(s);
       mshadow::Tensor<xpu, 3, DType> mrhs = inputs[1].get<xpu, 3, DType>(s);
+
+      struct timeval start, end;
+      long costtime;  
+      if(bdCalTime) {
+        gettimeofday(&start, NULL );
+      }
       MKL_INT8* mlhs_int8 = reinterpret_cast<MKL_INT8* >
           (mkl_calloc(mlhs.shape_[1] * mlhs.shape_[2], sizeof(MKL_INT8), 64));
       MKL_INT8* mrhs_int8 = reinterpret_cast<MKL_INT8* >
@@ -1379,21 +1392,78 @@ void BatchDotForward_CPU_(const nnvm::NodeAttrs& attrs,
       DType alpha = 1.0;
       DType beta = 0.0;
       MKL_INT  ao = 0, bo = 0;
+      if(bdCalTime) {
+        gettimeofday(&end, NULL );
+        if (end.tv_sec == start.tv_sec) {
+          costtime = end.tv_usec - start.tv_usec;
+        } else {
+          costtime = (end.tv_sec-start.tv_sec)*1000000 + end.tv_usec - start.tv_usec;
+        }
+        (bd_mkl_time) += costtime;
+        LOG(INFO) << "costtime:" << (float)costtime/1000 << "ms" << " bd_mkl_time:" << (float)(bd_mkl_time)/1000 << "ms";
+        gettimeofday(&start, NULL );
+      }
       for (int i = 0; i < out.shape_[0]; i++) {
         //  linalg_gemm(mlhs[i], mrhs[i], out[i], (DType)1.0f,
         //        (DType)0.0f, param.transpose_a, param.transpose_b);
+        if(bdCalTime) {
+          gettimeofday(&start, NULL );
+        }
         float factor_lr = quantilize(mlhs[i].dptr_, mrhs[i].dptr_, reinterpret_cast<int>(m),
             reinterpret_cast<int>(n), reinterpret_cast<int>(k),
             mlhs_int8, mrhs_int8, mrhs_sum_int8, param.transpose_b, true);
+        if(bdCalTime) {
+          gettimeofday(&end, NULL );
+          if (end.tv_sec == start.tv_sec) {
+            costtime = end.tv_usec - start.tv_usec;
+          } else {
+            costtime = (end.tv_sec-start.tv_sec)*1000000 + end.tv_usec - start.tv_usec;
+          }
+          (bd_q_time) += costtime;
+          gettimeofday(&start, NULL );
+        }
         cblas_gemm_s8u8s32(layout, trans_a, trans_b, CblasRowOffset,
           m, n, k, alpha, mlhs_int8, lda, ao, mrhs_int8, ldb, bo, beta,
           out_int8, ldc, mrhs_sum_int8);
+        if(bdCalTime) {
+          gettimeofday(&end, NULL );
+          if (end.tv_sec == start.tv_sec) {
+            costtime = end.tv_usec - start.tv_usec;
+          } else {
+            costtime = (end.tv_sec-start.tv_sec)*1000000 + end.tv_usec - start.tv_usec;
+          }
+          (bd_gemm_time) += costtime;
+          gettimeofday(&start, NULL );
+        }
         dequantilize(out_int8, out.shape_[1] * out.shape_[2], factor_lr, out[i].dptr_);
+        if(bdCalTime) {
+          gettimeofday(&end, NULL );
+          if (end.tv_sec == start.tv_sec) {
+            costtime = end.tv_usec - start.tv_usec;
+          } else {
+            costtime = (end.tv_sec-start.tv_sec)*1000000 + end.tv_usec - start.tv_usec;
+          }
+          (bd_dq_time) += costtime;
+          gettimeofday(&start, NULL );
+        }
       }
       mkl_free(mlhs_int8);
       mkl_free(mrhs_int8);
       mkl_free(mrhs_sum_int8);
       mkl_free(out_int8);
+      if(bdCalTime) {
+        gettimeofday(&end, NULL );
+        if (end.tv_sec == start.tv_sec) {
+          costtime = end.tv_usec - start.tv_usec;
+        } else {
+          costtime = (end.tv_sec-start.tv_sec)*1000000 + end.tv_usec - start.tv_usec;
+        }
+        (bd_mkl_time) += costtime;
+        LOG(INFO) << "costtime:" << (float)costtime/1000 << "ms" << " bd_mkl_time:" << (float)(bd_mkl_time)/1000 << "ms";
+        LOG(INFO) << "bd_q_time:" << (float)(bd_q_time)/1000 << "ms";
+        LOG(INFO) << "bd_dq_time:" << (float)(bd_dq_time)/1000 << "ms";
+        LOG(INFO) << "bd_gemm_time:" << (float)(bd_gemm_time)/1000 << "ms";
+      }
     });
 
   } else {

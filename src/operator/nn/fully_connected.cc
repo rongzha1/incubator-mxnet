@@ -29,6 +29,12 @@
 #include "../nnpack/nnpack_fully_connected-inl.h"
 #endif  // MXNET_USE_NNPACK
 
+bool bCalTime = false;
+long fc_mkl_time = 0;
+long fc_q_time = 0;
+long fc_dq_time = 0;
+long fc_gemm_time = 0;
+
 namespace mxnet {
 namespace op {
 
@@ -129,7 +135,7 @@ void FullyConnectedComputeExCPU(const nnvm::NodeAttrs& attrs,
     std::vector<TBlob> out_blobs(outputs.size());
     for (size_t i = 0; i < out_blobs.size(); i++) out_blobs[i] = outputs[i].data();
     if (ctx.is_train == 0) { //inference
-      FullyConnectedCompute_int8<cpu>(attrs, ctx, in_blobs, req, out_blobs);
+      FullyConnectedCompute_int8<cpu>(attrs, ctx, in_blobs, req, out_blobs, bCalTime, &fc_mkl_time, &fc_q_time, &fc_dq_time, &fc_gemm_time);
     } else {
       FullyConnectedCompute<cpu>(attrs, ctx, in_blobs, req, out_blobs);
     }

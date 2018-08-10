@@ -24,7 +24,6 @@
 */
 #ifndef MXNET_OPERATOR_NN_FULLY_CONNECTED_INL_H_
 #define MXNET_OPERATOR_NN_FULLY_CONNECTED_INL_H_
-
 #include <mkl.h>
 #include <dmlc/logging.h>
 #include <dmlc/parameter.h>
@@ -33,6 +32,7 @@
 #include <vector>
 #include <string>
 #include <utility>
+#include <sys/time.h>
 #include "../operator_common.h"
 #include "../elemwise_op_common.h"
 #include "../linalg.h"
@@ -119,7 +119,7 @@ void FCForward(const OpContext &ctx, const FullyConnectedParam &param,
 template<typename xpu, typename DType>
 void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
                const std::vector<TBlob> &in_data, const std::vector<OpReqType> &req,
-               const std::vector<TBlob> &out_data) {
+               const std::vector<TBlob> &out_data, bool bCalTime, long* fc_mkl_time, long* fc_q_time, long* fc_dq_time, long* fc_gemm_time) {
   using namespace mshadow;
   using namespace mshadow::expr;
   if (req[fullc::kOut] == kNullOp) return;
@@ -156,6 +156,13 @@ void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
   // Legacy approach shown here for comparison:
   //   out = dot(data, wmat.T());
 
+  struct timeval start, end;
+  long costtime;  
+  if(bCalTime) {
+    gettimeofday(&start, NULL );
+    //  LOG(INFO) << "start.tv_sec:" << start.tv_sec << " start.tv_usec:" << start.tv_usec;
+  }
+
   MKL_INT8* data_int8 = reinterpret_cast<MKL_INT8* >
       (mkl_calloc(data.shape_[0] * data.shape_[1], sizeof(MKL_INT8), 64));
   MKL_INT8* wmat_int8 = reinterpret_cast<MKL_INT8* >
@@ -178,20 +185,86 @@ void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
   DType alpha = 1.0;
   DType beta = 0.0;
   MKL_INT  ao = 0, bo = 0;
+
+  if(bCalTime) {
+    gettimeofday(&end, NULL );
+    //  LOG(INFO) << "end.tv_sec:" << end.tv_sec << " end.tv_usec:" << end.tv_usec;
+    if (end.tv_sec == start.tv_sec) {
+      costtime = end.tv_usec - start.tv_usec;
+    } else {
+      costtime = (end.tv_sec-start.tv_sec)*1000000 + end.tv_usec - start.tv_usec;
+    }
+    (*fc_mkl_time) += costtime;
+    LOG(INFO) << "costtime:" << (float)costtime/1000 << "ms" << " fc_mkl_time:" << (float)(*fc_mkl_time)/1000 << "ms";
+    gettimeofday(&start, NULL );
+  }
     
   float factor_lr = quantilize(data.dptr_, wmat.dptr_, reinterpret_cast<int>(m),
       reinterpret_cast<int>(n), reinterpret_cast<int>(k),
   data_int8, wmat_int8, wmat_sum_int8, true, true);
+
+  if(bCalTime) {
+    gettimeofday(&end, NULL );
+    //  LOG(INFO) << "end.tv_sec:" << end.tv_sec << " end.tv_usec:" << end.tv_usec;
+    if (end.tv_sec == start.tv_sec) {
+      costtime = end.tv_usec - start.tv_usec;
+    } else {
+      costtime = (end.tv_sec-start.tv_sec)*1000000 + end.tv_usec - start.tv_usec;
+    }
+    (*fc_q_time) += costtime;
+    LOG(INFO) << "costtime:" << (float)costtime/1000 << "ms" << " fc_q_time:" << (float)(*fc_q_time)/1000 << "ms";
+    gettimeofday(&start, NULL );
+  }
+
+
   cblas_gemm_s8u8s32(layout, trans_a, trans_b, CblasRowOffset,
     m, n, k, alpha, data_int8, lda, ao, wmat_int8, ldb, bo, beta,
     out_int8, ldc, wmat_sum_int8);
+
+  if(bCalTime) {
+    gettimeofday(&end, NULL );
+    //  LOG(INFO) << "end.tv_sec:" << end.tv_sec << " end.tv_usec:" << end.tv_usec;
+    if (end.tv_sec == start.tv_sec) {
+      costtime = end.tv_usec - start.tv_usec;
+    } else {
+      costtime = (end.tv_sec-start.tv_sec)*1000000 + end.tv_usec - start.tv_usec;
+    }
+    (*fc_gemm_time) += costtime;
+    LOG(INFO) << "costtime:" << (float)costtime/1000 << "ms" << " fc_gemm_time:" << (float)(*fc_gemm_time)/1000 << "ms";
+    gettimeofday(&start, NULL );
+  }
+
   dequantilize(out_int8, out.shape_[0] * out.shape_[1], factor_lr, out.dptr_);
+
+  if(bCalTime) {
+    gettimeofday(&end, NULL );
+    //  LOG(INFO) << "end.tv_sec:" << end.tv_sec << " end.tv_usec:" << end.tv_usec;
+    if (end.tv_sec == start.tv_sec) {
+      costtime = end.tv_usec - start.tv_usec;
+    } else {
+      costtime = (end.tv_sec-start.tv_sec)*1000000 + end.tv_usec - start.tv_usec;
+    }
+    (*fc_dq_time) += costtime;
+    LOG(INFO) << "costtime:" << (float)costtime/1000 << "ms" << " fc_dq_time:" << (float)(*fc_dq_time)/1000 << "ms";
+    gettimeofday(&start, NULL );
+  }
 
   mkl_free(data_int8);
   mkl_free(wmat_int8);
   mkl_free(wmat_sum_int8);
   mkl_free(out_int8);
   
+  if(bCalTime) {
+    gettimeofday(&end, NULL );
+    //  LOG(INFO) << "end.tv_sec:" << end.tv_sec << " end.tv_usec:" << end.tv_usec;
+    if (end.tv_sec == start.tv_sec) {
+      costtime = end.tv_usec - start.tv_usec;
+    } else {
+      costtime = (end.tv_sec-start.tv_sec)*1000000 + end.tv_usec - start.tv_usec;
+    }
+    (*fc_mkl_time) += costtime;
+    LOG(INFO) << "costtime:" << (float)costtime/1000 << "ms" << " fc_mkl_time:" << (float)(*fc_mkl_time)/1000 << "ms";
+  }
 
   if (!param.no_bias) {
     Tensor<xpu, 1, DType> bias = in_data[fullc::kBias].get_with_shape<xpu, 1, DType>(
@@ -289,7 +362,7 @@ void FullyConnectedCompute_int8(const nnvm::NodeAttrs& attrs,
                            const OpContext& ctx,
                            const std::vector<TBlob>& inputs,
                            const std::vector<OpReqType>& req,
-                           const std::vector<TBlob>& outputs) {
+                           const std::vector<TBlob>& outputs, bool bCalTime, long* fc_mkl_time, long* fc_q_time, long* fc_dq_time, long* fc_gemm_time) {
   const FullyConnectedParam& param = nnvm::get<FullyConnectedParam>(attrs.parsed);
   uint32_t in_expected = param.no_bias ? 2 : 3;
   CHECK_EQ(inputs.size(), in_expected);
@@ -298,10 +371,10 @@ void FullyConnectedCompute_int8(const nnvm::NodeAttrs& attrs,
 
   switch (dtype) {
   case mshadow::kFloat32:
-    FCForward_int8<xpu, float>(ctx, param, inputs, req, outputs);
+    FCForward_int8<xpu, float>(ctx, param, inputs, req, outputs, bCalTime, fc_mkl_time, fc_q_time, fc_dq_time, fc_gemm_time);
     break;
   case mshadow::kFloat64:
-    FCForward_int8<xpu, double>(ctx, param, inputs, req, outputs);
+    FCForward_int8<xpu, double>(ctx, param, inputs, req, outputs, bCalTime, fc_mkl_time, fc_q_time, fc_dq_time, fc_gemm_time);
     break;
   case mshadow::kFloat16:
     LOG(FATAL) << "float16 fully connected layer is currently"
