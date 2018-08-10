@@ -81,18 +81,19 @@ inline DType getmax(DType* x, size_t size) {
 template<typename DType>
 void scale_data(DType* x, size_t size, float factor, MKL_INT8* x_out, int shift) {
   const int omp_threads = mxnet::engine::OpenMP::Get()->GetRecommendedOMPThreadCount();
-  float foffset = 0.5;
+  float* tmp = new float[size];
+  float* y = new float[size];
   #pragma omp parallel for num_threads(omp_threads)
-  for (size_t i = 0; i < size; ++i) {
-    if (x[i] > 0) {
-      foffset = 0.5;
-    } else if (x[i] == 0.0) {
-      foffset = 0.0;
-    } else {
-      foffset = -0.5;
-    }
-    x_out[i] = (MKL_INT8) (x[i] * factor + foffset) + shift;  //  ensure x >= 0
+  for (size_t i = 0; i < size; ++i) {    
+    tmp[i] = x[i] * factor;
   }
+  vsNearbyInt((MKL_INT)size, tmp, y );
+  #pragma omp parallel for num_threads(omp_threads)
+  for (size_t i = 0; i < size; ++i) {    
+    x_out[i] = y[i] + shift;
+  }
+  delete[] tmp;
+  delete[] y;
 }
 
 template<typename DType>
@@ -102,16 +103,22 @@ void prepare_sum_data(MKL_INT8* x, int n, int k, MKL_INT32* x_out, DType transpo
     #pragma omp parallel for num_threads(omp_threads)
     for (int i = 0; i < n; ++i) {
       x_out[i] = 0;
+    }
+    #pragma omp parallel for num_threads(omp_threads)
+    for (int i = 0; i < n; ++i) {
       for (int j = 0; j < k; ++j) {
-        x_out[i] += (-64) * x[i * k + j];
+        x_out[i] -= 64 * x[i * k + j];
       }
     }
   } else {
     #pragma omp parallel for num_threads(omp_threads)
     for (int i = 0; i < n; ++i) {
       x_out[i] = 0;
+    }
+    #pragma omp parallel for num_threads(omp_threads)
+    for (int i = 0; i < n; ++i) {
       for (int j = 0; j < k; ++j) {
-        x_out[i] += (-64) * x[j * n + i];
+        x_out[i] -= 64 * x[j * n + i];
       }
     }
   }
