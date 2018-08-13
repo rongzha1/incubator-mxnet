@@ -48,6 +48,7 @@ long bd_mkl_time = 0;
 long bd_q_time = 0;
 long bd_dq_time = 0;
 long bd_gemm_time = 0;
+long bd_gemm_call = 0;
 
 namespace mxnet {
 namespace op {
@@ -1431,6 +1432,7 @@ void BatchDotForward_CPU_(const nnvm::NodeAttrs& attrs,
           m, n, k, alpha, mlhs_int8, lda, ao, mrhs_int8, ldb, bo, beta,
           out_int8, ldc, &co);
         if(bdCalTime) {
+          bd_gemm_call++;
           gettimeofday(&end, NULL );
           if (end.tv_sec == start.tv_sec) {
             costtime = end.tv_usec - start.tv_usec;
@@ -1467,7 +1469,7 @@ void BatchDotForward_CPU_(const nnvm::NodeAttrs& attrs,
         LOG(INFO) << "costtime:" << (float)costtime/1000 << "ms" << " bd_mkl_time:" << (float)(bd_mkl_time)/1000 << "ms";
         LOG(INFO) << "bd_q_time:" << (float)(bd_q_time)/1000 << "ms";
         LOG(INFO) << "bd_dq_time:" << (float)(bd_dq_time)/1000 << "ms";
-        LOG(INFO) << "bd_gemm_time:" << (float)(bd_gemm_time)/1000 << "ms";
+        LOG(INFO) << "bd_gemm_time:" << (float)(bd_gemm_time)/1000 << "ms" << " bd_gemm_call:" << bd_gemm_call;
       }
     });
 

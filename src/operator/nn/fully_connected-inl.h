@@ -119,7 +119,7 @@ void FCForward(const OpContext &ctx, const FullyConnectedParam &param,
 template<typename xpu, typename DType>
 void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
                const std::vector<TBlob> &in_data, const std::vector<OpReqType> &req,
-               const std::vector<TBlob> &out_data, bool bCalTime, long* fc_mkl_time, long* fc_q_time, long* fc_dq_time, long* fc_gemm_time) {
+               const std::vector<TBlob> &out_data, bool bCalTime, long* fc_mkl_time, long* fc_q_time, long* fc_dq_time, long* fc_gemm_time, long* fc_gemm_call) {
   using namespace mshadow;
   using namespace mshadow::expr;
   if (req[fullc::kOut] == kNullOp) return;
@@ -225,6 +225,7 @@ void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
     m, n, k, alpha, data_int8, lda, ao, wmat_int8, ldb, bo, beta,
     out_int8, ldc, &co);
   if(bCalTime) {
+    (*fc_gemm_call)++;
     gettimeofday(&end, NULL );
     //  LOG(INFO) << "end.tv_sec:" << end.tv_sec << " end.tv_usec:" << end.tv_usec;
     if (end.tv_sec == start.tv_sec) {
@@ -233,7 +234,7 @@ void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
       costtime = (end.tv_sec-start.tv_sec)*1000000 + end.tv_usec - start.tv_usec;
     }
     (*fc_gemm_time) += costtime;
-    LOG(INFO) << "costtime:" << (float)costtime/1000 << "ms" << " fc_gemm_time:" << (float)(*fc_gemm_time)/1000 << "ms";
+    LOG(INFO) << "costtime:" << (float)costtime/1000 << "ms" << " fc_gemm_time:" << (float)(*fc_gemm_time)/1000 << "ms" << " fc_gemm_call:" << (*fc_gemm_call);
     gettimeofday(&start, NULL );
   }
 
@@ -365,7 +366,7 @@ void FullyConnectedCompute_int8(const nnvm::NodeAttrs& attrs,
                            const OpContext& ctx,
                            const std::vector<TBlob>& inputs,
                            const std::vector<OpReqType>& req,
-                           const std::vector<TBlob>& outputs, bool bCalTime, long* fc_mkl_time, long* fc_q_time, long* fc_dq_time, long* fc_gemm_time) {
+                           const std::vector<TBlob>& outputs, bool bCalTime, long* fc_mkl_time, long* fc_q_time, long* fc_dq_time, long* fc_gemm_time, long* fc_gemm_call) {
   const FullyConnectedParam& param = nnvm::get<FullyConnectedParam>(attrs.parsed);
   uint32_t in_expected = param.no_bias ? 2 : 3;
   CHECK_EQ(inputs.size(), in_expected);
@@ -374,10 +375,10 @@ void FullyConnectedCompute_int8(const nnvm::NodeAttrs& attrs,
 
   switch (dtype) {
   case mshadow::kFloat32:
-    FCForward_int8<xpu, float>(ctx, param, inputs, req, outputs, bCalTime, fc_mkl_time, fc_q_time, fc_dq_time, fc_gemm_time);
+    FCForward_int8<xpu, float>(ctx, param, inputs, req, outputs, bCalTime, fc_mkl_time, fc_q_time, fc_dq_time, fc_gemm_time, fc_gemm_call);
     break;
   case mshadow::kFloat64:
-    FCForward_int8<xpu, double>(ctx, param, inputs, req, outputs, bCalTime, fc_mkl_time, fc_q_time, fc_dq_time, fc_gemm_time);
+    FCForward_int8<xpu, double>(ctx, param, inputs, req, outputs, bCalTime, fc_mkl_time, fc_q_time, fc_dq_time, fc_gemm_time, fc_gemm_call);
     break;
   case mshadow::kFloat16:
     LOG(FATAL) << "float16 fully connected layer is currently"
