@@ -167,9 +167,9 @@ void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
       (mkl_calloc(data.shape_[0] * data.shape_[1], sizeof(MKL_INT8), 64));
   MKL_INT8* wmat_int8 = reinterpret_cast<MKL_INT8* >
       (mkl_calloc(wmat.shape_[0] * wmat.shape_[1], sizeof(MKL_INT8), 64));
-  size_t sum_size = wmat.shape_[0];
-  MKL_INT32* wmat_sum_int8 = reinterpret_cast<MKL_INT32* >
-      (mkl_calloc(sum_size, sizeof(MKL_INT32), 64));
+//  size_t sum_size = wmat.shape_[0];
+//  MKL_INT32* wmat_sum_int8 = reinterpret_cast<MKL_INT32* >
+//      (mkl_calloc(sum_size, sizeof(MKL_INT32), 64));
   MKL_INT32* out_int8 = reinterpret_cast<MKL_INT32* >
   (mkl_calloc(out.shape_[0] * out.shape_[1], sizeof(MKL_INT32), 64));
   CBLAS_TRANSPOSE trans_a = CblasNoTrans;
@@ -184,7 +184,7 @@ void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
   ldc = n;
   DType alpha = 1.0;
   DType beta = 0.0;
-  MKL_INT  ao = 0, bo = 0;
+  MKL_INT  ao = -64, bo = 0, co = 0;
 
   if(bCalTime) {
     gettimeofday(&end, NULL );
@@ -198,10 +198,10 @@ void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
     LOG(INFO) << "costtime:" << (float)costtime/1000 << "ms" << " fc_mkl_time:" << (float)(*fc_mkl_time)/1000 << "ms";
     gettimeofday(&start, NULL );
   }
-    
+
   float factor_lr = quantilize(data.dptr_, wmat.dptr_, reinterpret_cast<int>(m),
       reinterpret_cast<int>(n), reinterpret_cast<int>(k),
-  data_int8, wmat_int8, wmat_sum_int8, true, true);
+  data_int8, wmat_int8, true);
 
   if(bCalTime) {
     gettimeofday(&end, NULL );
@@ -216,11 +216,14 @@ void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
     gettimeofday(&start, NULL );
   }
 
-
+/*
   cblas_gemm_s8u8s32(layout, trans_a, trans_b, CblasRowOffset,
     m, n, k, alpha, data_int8, lda, ao, wmat_int8, ldb, bo, beta,
     out_int8, ldc, wmat_sum_int8);
-
+*/
+  cblas_gemm_s8u8s32(layout, trans_a, trans_b, CblasFixOffset,
+    m, n, k, alpha, data_int8, lda, ao, wmat_int8, ldb, bo, beta,
+    out_int8, ldc, &co);
   if(bCalTime) {
     gettimeofday(&end, NULL );
     //  LOG(INFO) << "end.tv_sec:" << end.tv_sec << " end.tv_usec:" << end.tv_usec;
@@ -251,7 +254,7 @@ void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
 
   mkl_free(data_int8);
   mkl_free(wmat_int8);
-  mkl_free(wmat_sum_int8);
+//  mkl_free(wmat_sum_int8);
   mkl_free(out_int8);
   
   if(bCalTime) {

@@ -41,7 +41,6 @@
 #include "./mshadow_op.h"
 #include "./linalg.h"
 
-
 namespace mxnet {
 namespace op {
 
@@ -75,6 +74,7 @@ inline DType getmax(DType* x, size_t size) {
   } else {
     ret = fabs(min) == 0.0f ? 1.0f : fabs(min);
   }
+//  LOG(INFO) << ret;
   return ret;
 }
 
@@ -96,6 +96,7 @@ void scale_data(DType* x, size_t size, float factor, MKL_INT8* x_out, int shift)
   delete[] y;
 }
 
+/*
 template<typename DType>
 void prepare_sum_data(MKL_INT8* x, int n, int k, MKL_INT32* x_out, DType transpose_b) {
   const int omp_threads = mxnet::engine::OpenMP::Get()->GetRecommendedOMPThreadCount();
@@ -132,8 +133,19 @@ inline DType quantilize(DType* x, DType* y, int m, int n, int k, MKL_INT8* x_int
   scale_data(x, m * k, factor_l, x_int8, 64);
   scale_data(y, k * n, factor_r, y_int8, 0);
   if (recalculate) {
-      prepare_sum_data(y_int8, n, k, sum_int8, transpose_b);
+    prepare_sum_data(y_int8, n, k, sum_int8, transpose_b);
   }
+  return factor_l * factor_r;
+}
+*/
+
+template<typename DType>
+inline DType quantilize(DType* x, DType* y, int m, int n, int k, MKL_INT8* x_int8,
+                        MKL_INT8* y_int8, int transpose_b) {
+  float factor_l = 63 / getmax(x, m * k);
+  float factor_r = 127 / getmax(y, k * n);
+  scale_data(x, m * k, factor_l, x_int8, 64);
+  scale_data(y, k * n, factor_r, y_int8, 0);
   return factor_l * factor_r;
 }
 
@@ -448,12 +460,12 @@ void LstmForwardInferenceSingleLayer_int8(DType* ws,
   const int cell_size = N * H;
   const int omp_threads = mxnet::engine::OpenMP::Get()->GetRecommendedOMPThreadCount();
 
-  MKL_INT  ao = 0, bo = 0;
+  MKL_INT  ao = -64, bo = 0, co = 0;
   MKL_INT8* x_int8 = reinterpret_cast<MKL_INT8* > (mkl_calloc(T * N * I, sizeof(MKL_INT8), 64));
   MKL_INT8* wx_int8 = reinterpret_cast<MKL_INT8* > (mkl_calloc(4 * H * I, sizeof(MKL_INT8), 64));
   MKL_INT8* wh_int8 = reinterpret_cast<MKL_INT8* > (mkl_calloc(4 * H * H, sizeof(MKL_INT8), 64));
-  MKL_INT32* wx_sum_int8 = reinterpret_cast<MKL_INT32* > (mkl_calloc(4 * H, sizeof(MKL_INT32), 64));
-  MKL_INT32* wh_sum_int8 = reinterpret_cast<MKL_INT32* > (mkl_calloc(4 * H, sizeof(MKL_INT32), 64));
+//  MKL_INT32* wx_sum_int8 = reinterpret_cast<MKL_INT32* > (mkl_calloc(4 * H, sizeof(MKL_INT32), 64));
+//  MKL_INT32* wh_sum_int8 = reinterpret_cast<MKL_INT32* > (mkl_calloc(4 * H, sizeof(MKL_INT32), 64));
   MKL_INT8* h_int8 = reinterpret_cast<MKL_INT8* > (mkl_calloc(N * H, sizeof(MKL_INT8), 64));
   MKL_INT32* yx_flat_int8 = reinterpret_cast<MKL_INT32* >
       (mkl_calloc(T * N * 4 * H, sizeof(MKL_INT32), 64));
@@ -461,11 +473,17 @@ void LstmForwardInferenceSingleLayer_int8(DType* ws,
       (mkl_calloc(N * 4 * H, sizeof(MKL_INT32), 64));
 
   //  linalg_gemm(x, wx, yx_flat, alpha, beta, false, true);
-  float factor_lr = quantilize(x.dptr_, wx.dptr_, N * T, 4 * H, I,
-      x_int8, wx_int8, wx_sum_int8, 1, true);
+  float factor_lr = quantilize(x.dptr_, wx.dptr_, N * T, 4 * H, I, x_int8, wx_int8, 1);
+/*
   cblas_gemm_s8u8s32(CblasRowMajor, CblasNoTrans, CblasTrans, CblasRowOffset,
       N * T, 4 * H, I, alpha, x_int8, I, ao, wx_int8, I, bo, beta,
       yx_flat_int8, 4 * H, wx_sum_int8);
+*/
+
+  cblas_gemm_s8u8s32(CblasRowMajor, CblasNoTrans, CblasTrans, CblasFixOffset,
+      N * T, 4 * H, I, alpha, x_int8, I, ao, wx_int8, I, bo, beta,
+      yx_flat_int8, 4 * H, &co);
+
   dequantilize(yx_flat_int8, T * N * 4 * H, factor_lr, yx_flat.dptr_);
 
   for (int i = 0; i < T; ++i) {
@@ -473,11 +491,16 @@ void LstmForwardInferenceSingleLayer_int8(DType* ws,
 
     //  linalg_gemm(i ? h : hx, wh, yh_flat, alpha, beta, false, true);
     DType* ht_1 = i ? h.dptr_ : hx.dptr_;
-    factor_lr = quantilize(ht_1, wh.dptr_, N, 4 * H, H, h_int8, wh_int8,
-        wh_sum_int8, 1, i ? false : true);
+    factor_lr = quantilize(ht_1, wh.dptr_, N, 4 * H, H, h_int8, wh_int8, 1);
+/*
     cblas_gemm_s8u8s32(CblasRowMajor, CblasNoTrans, CblasTrans,
         CblasRowOffset, N, 4 * H, H, alpha, h_int8, H, ao,
         wh_int8, H, bo, beta, yh_flat_int8, 4 * H, wh_sum_int8);
+*/
+    cblas_gemm_s8u8s32(CblasRowMajor, CblasNoTrans, CblasTrans,
+        CblasFixOffset, N, 4 * H, H, alpha, h_int8, H, ao,
+        wh_int8, H, bo, beta, yh_flat_int8, 4 * H, &co);
+
     dequantilize(yh_flat_int8, N * 4 * H, factor_lr, yh_flat.dptr_);
 
     #pragma omp parallel for num_threads(omp_threads)
@@ -504,8 +527,8 @@ void LstmForwardInferenceSingleLayer_int8(DType* ws,
   mkl_free(x_int8);
   mkl_free(wx_int8);
   mkl_free(wh_int8);
-  mkl_free(wx_sum_int8);
-  mkl_free(wh_sum_int8);
+//  mkl_free(wx_sum_int8);
+//  mkl_free(wh_sum_int8);
   mkl_free(yx_flat_int8);
   mkl_free(yh_flat_int8);
   mkl_free(h_int8);
@@ -835,6 +858,7 @@ void LstmBackward(DType* ws,
   }
 }
 
+/*
 template<typename DType>
 void GruForwardInferenceSingleLayer_int8(DType* ws,
                                          DType* tmp_buf,
@@ -923,11 +947,7 @@ void GruForwardInferenceSingleLayer_int8(DType* ws,
     back_ht_1_int8 = reinterpret_cast<MKL_INT8* > (mkl_calloc(N * H, sizeof(MKL_INT8), 64));
   }
 
-  /*
-  cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans, N * T, 3 * H, I, alpha,
-      reinterpret_cast<float *>(x.dptr_), I, reinterpret_cast<float *>(wx_ptr),
-      I, beta, reinterpret_cast<float *>(gemmC1), 3 * H);
- */
+
   float factor_lr = quantilize(x.dptr_, wx.dptr_, N * T, 3 * H, I, x_int8,
       wx_int8, wx_sum_int8, 1, true);
   cblas_gemm_s8u8s32(CblasRowMajor, CblasNoTrans, CblasTrans, CblasRowOffset,
@@ -936,11 +956,7 @@ void GruForwardInferenceSingleLayer_int8(DType* ws,
   dequantilize(gemmC1_int8, T * N * 3 * H, factor_lr, gemmC1);
 
   if (D == 2) {
-/*
-    cblas_sgemm(CblasRowMajor,CblasNoTrans, CblasTrans, N * T, 3 * H, I, alpha, 
-      reinterpret_cast<float *>(x.dptr_), I, reinterpret_cast<float *>(back_wx_ptr),
-      I, beta, reinterpret_cast<float *>(back_gemmC1), 3 * H); 
-*/
+
     float factor_lr = quantilize(x.dptr_, back_wx.dptr_, N * T, 3 * H, I, x_int8, back_wx_int8,
         back_wx_sum_int8, 1, true);
     cblas_gemm_s8u8s32(CblasRowMajor, CblasNoTrans, CblasTrans, CblasRowOffset,
@@ -952,13 +968,7 @@ void GruForwardInferenceSingleLayer_int8(DType* ws,
   for (int t = 0; t < T; t++) {
     //  perform the first direction, X * wx and H * wh for each step
     //  ht-1 * wh, ht-1:[N, H] wh:[3 * H, H]
-/*
-    cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans, N, 3 * H, H, alpha, 
-      reinterpret_cast<float *>(ht_1), D * H, 
-      reinterpret_cast<float *>(wh_ptr), H, beta,
-      reinterpret_cast<float *>(gemmC2), 3 * H);  
-    }
-*/
+
     DType* h_l = ht_1;
     if (D == 2) {
       Tensor<cpu, 2, DType> dht_1(ht_1, Shape2(N, D * H));
@@ -988,10 +998,7 @@ void GruForwardInferenceSingleLayer_int8(DType* ws,
             + bx[1][j] + bh[1][j]);
         nt[i * H + j] = tanh(gemmC1_t[ntb + j] + bx[2][j] +
             rt[i * H + j] * (gemmC2[ntb + j] + bh[2][j]));
-        /*
-        ht[i * D * H + j] = (1 - zt[i * H + j]) * nt[i * H + j] +
-            zt[i * H + j] * (ht_1_int8[i * D * H + j] / factor_ht_1);
-        */
+   
         ht[i * D * H + j] = (1 - zt[i * H + j]) * nt[i * H + j] +
             zt[i * H + j] * ht_1[i * D * H + j];
       }
@@ -1001,12 +1008,7 @@ void GruForwardInferenceSingleLayer_int8(DType* ws,
     //  perform the second direction
     if (D == 2) {
       gemmC1_t = back_gemmC1 + (T - 1 - t) * N * 3 * H;
-/*
-      cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans, N, 3 * H, H, alpha, 
-        reinterpret_cast<float *>(back_ht_1), D * H,
-        reinterpret_cast<float *>(back_wh_ptr), H, beta,
-        reinterpret_cast<float *>(gemmC2), 3 * H);
-*/
+
       DType* back_h_l = back_ht_1;
       if (D == 2) {
         Tensor<cpu, 2, DType> dback_ht_1(back_ht_1 - H, Shape2(N, D * H));
@@ -1034,10 +1036,7 @@ void GruForwardInferenceSingleLayer_int8(DType* ws,
               gemmC2[ztb + j] + back_bx[1][j]+ back_bh[1][j]);
           nt[i * H + j] = tanh(gemmC1_t[ntb + j] + back_bx[2][j]
               + rt[i * H + j] * (gemmC2[ntb + j] + back_bh[2][j]));
-          /*
-          back_ht[i * D * H + j] = (1 - zt[i * H + j]) * nt[i * H + j]
-              + zt[i * H + j] * (back_ht_1_int8[i * D * H + j] / factor_back_ht_1);
-          */
+  
           back_ht[i * D * H + j] = (1 - zt[i * H + j]) * nt[i * H + j]
               + zt[i * H + j] * back_ht_1[i * D * H + j];
         }
@@ -1137,7 +1136,7 @@ void GruForwardInference_int8(DType* ws,
     wh_l = wx_l + I * 3 * H;
   }
 }
-
+*/
 
 template<typename DType>
 void GruForwardInferenceSingleLayer(DType* ws,

@@ -1362,9 +1362,9 @@ void BatchDotForward_CPU_(const nnvm::NodeAttrs& attrs,
           (mkl_calloc(mlhs.shape_[1] * mlhs.shape_[2], sizeof(MKL_INT8), 64));
       MKL_INT8* mrhs_int8 = reinterpret_cast<MKL_INT8* >
           (mkl_calloc(mrhs.shape_[1] * mrhs.shape_[2], sizeof(MKL_INT8), 64));
-      size_t sum_size = param.transpose_b ? mrhs.shape_[1] : mrhs.shape_[2];
-      MKL_INT32* mrhs_sum_int8 = reinterpret_cast<MKL_INT32* >
-          (mkl_calloc(sum_size, sizeof(MKL_INT32), 64));
+//      size_t sum_size = param.transpose_b ? mrhs.shape_[1] : mrhs.shape_[2];
+//      MKL_INT32* mrhs_sum_int8 = reinterpret_cast<MKL_INT32* >
+//          (mkl_calloc(sum_size, sizeof(MKL_INT32), 64));
       MKL_INT32* out_int8 = reinterpret_cast<MKL_INT32* >
       (mkl_calloc(out.shape_[1] * out.shape_[2], sizeof(MKL_INT32), 64));
       CBLAS_TRANSPOSE trans_a = param.transpose_a ? CblasTrans : CblasNoTrans;
@@ -1391,7 +1391,7 @@ void BatchDotForward_CPU_(const nnvm::NodeAttrs& attrs,
       ldc = (layout == CblasRowMajor) ? n : m;
       DType alpha = 1.0;
       DType beta = 0.0;
-      MKL_INT  ao = 0, bo = 0;
+      MKL_INT  ao = -64, bo = 0, co = 0;
       if(bdCalTime) {
         gettimeofday(&end, NULL );
         if (end.tv_sec == start.tv_sec) {
@@ -1411,7 +1411,7 @@ void BatchDotForward_CPU_(const nnvm::NodeAttrs& attrs,
         }
         float factor_lr = quantilize(mlhs[i].dptr_, mrhs[i].dptr_, reinterpret_cast<int>(m),
             reinterpret_cast<int>(n), reinterpret_cast<int>(k),
-            mlhs_int8, mrhs_int8, mrhs_sum_int8, param.transpose_b, true);
+            mlhs_int8, mrhs_int8, param.transpose_b);
         if(bdCalTime) {
           gettimeofday(&end, NULL );
           if (end.tv_sec == start.tv_sec) {
@@ -1422,9 +1422,14 @@ void BatchDotForward_CPU_(const nnvm::NodeAttrs& attrs,
           (bd_q_time) += costtime;
           gettimeofday(&start, NULL );
         }
+/*
         cblas_gemm_s8u8s32(layout, trans_a, trans_b, CblasRowOffset,
           m, n, k, alpha, mlhs_int8, lda, ao, mrhs_int8, ldb, bo, beta,
           out_int8, ldc, mrhs_sum_int8);
+*/
+        cblas_gemm_s8u8s32(layout, trans_a, trans_b, CblasFixOffset,
+          m, n, k, alpha, mlhs_int8, lda, ao, mrhs_int8, ldb, bo, beta,
+          out_int8, ldc, &co);
         if(bdCalTime) {
           gettimeofday(&end, NULL );
           if (end.tv_sec == start.tv_sec) {
@@ -1449,7 +1454,7 @@ void BatchDotForward_CPU_(const nnvm::NodeAttrs& attrs,
       }
       mkl_free(mlhs_int8);
       mkl_free(mrhs_int8);
-      mkl_free(mrhs_sum_int8);
+//      mkl_free(mrhs_sum_int8);
       mkl_free(out_int8);
       if(bdCalTime) {
         gettimeofday(&end, NULL );
