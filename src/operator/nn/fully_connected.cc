@@ -98,6 +98,7 @@ void FullyConnectedComputeExCPU(const nnvm::NodeAttrs& attrs,
     valid_bias = inputs[2].storage_type() == kDefaultStorage ||
                  inputs[2].storage_type() == kRowSparseStorage;
   }
+/*
 #if MXNET_USE_MKLDNN == 1
   if (common::ContainsOnlyStorage(inputs, kDefaultStorage) &&
       common::ContainsOnlyStorage(outputs, kDefaultStorage)) {
@@ -130,6 +131,7 @@ void FullyConnectedComputeExCPU(const nnvm::NodeAttrs& attrs,
     LogUnimplementedOp(attrs, ctx, inputs, req, outputs);
   }
 #else
+*/
   if (valid_data && valid_weight && valid_bias && valid_out) {
     std::vector<TBlob> in_blobs(inputs.size());
     for (size_t i = 0; i < in_blobs.size(); i++) in_blobs[i] = inputs[i].data();
@@ -143,7 +145,7 @@ void FullyConnectedComputeExCPU(const nnvm::NodeAttrs& attrs,
   } else {
     LogUnimplementedOp(attrs, ctx, inputs, req, outputs);
   }
-#endif
+//#endif
 }
 
 #if MXNET_USE_MKLDNN == 1
