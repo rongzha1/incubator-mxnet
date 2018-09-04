@@ -119,7 +119,7 @@ void FCForward(const OpContext &ctx, const FullyConnectedParam &param,
 template<typename xpu, typename DType>
 void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
                const std::vector<TBlob> &in_data, const std::vector<OpReqType> &req,
-               const std::vector<TBlob> &out_data, bool bCalTime, long* fc_mkl_time, long* fc_q_time, long* fc_dq_time, long* fc_gemm_time, long* fc_gemm_call) {
+               const std::vector<TBlob> &out_data, bool bCalTime, long* fc_mkl_time, long* fc_q_time, long* fc_dq_time, long* fc_gemm_time, long* fc_gemm_call, MKL_INT8* data_int8, MKL_INT8* wmat_int8, MKL_INT32* out_int8) {
   using namespace mshadow;
   using namespace mshadow::expr;
   if (req[fullc::kOut] == kNullOp) return;
@@ -162,16 +162,18 @@ void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
     gettimeofday(&start, NULL );
     //  LOG(INFO) << "start.tv_sec:" << start.tv_sec << " start.tv_usec:" << start.tv_usec;
   }
-
+/*
   MKL_INT8* data_int8 = reinterpret_cast<MKL_INT8* >
       (mkl_calloc(data.shape_[0] * data.shape_[1], sizeof(MKL_INT8), 64));
   MKL_INT8* wmat_int8 = reinterpret_cast<MKL_INT8* >
       (mkl_calloc(wmat.shape_[0] * wmat.shape_[1], sizeof(MKL_INT8), 64));
+
 //  size_t sum_size = wmat.shape_[0];
 //  MKL_INT32* wmat_sum_int8 = reinterpret_cast<MKL_INT32* >
 //      (mkl_calloc(sum_size, sizeof(MKL_INT32), 64));
   MKL_INT32* out_int8 = reinterpret_cast<MKL_INT32* >
   (mkl_calloc(out.shape_[0] * out.shape_[1], sizeof(MKL_INT32), 64));
+*/
   CBLAS_TRANSPOSE trans_a = CblasNoTrans;
   CBLAS_TRANSPOSE trans_b = CblasTrans;
   CBLAS_LAYOUT layout = CblasRowMajor;
@@ -252,11 +254,12 @@ void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
     LOG(INFO) << "costtime:" << (float)costtime/1000 << "ms" << " fc_dq_time:" << (float)(*fc_dq_time)/1000 << "ms";
     gettimeofday(&start, NULL );
   }
-
+/*
   mkl_free(data_int8);
   mkl_free(wmat_int8);
 //  mkl_free(wmat_sum_int8);
   mkl_free(out_int8);
+*/
   
   if(bCalTime) {
     gettimeofday(&end, NULL );
@@ -366,7 +369,7 @@ void FullyConnectedCompute_int8(const nnvm::NodeAttrs& attrs,
                            const OpContext& ctx,
                            const std::vector<TBlob>& inputs,
                            const std::vector<OpReqType>& req,
-                           const std::vector<TBlob>& outputs, bool bCalTime, long* fc_mkl_time, long* fc_q_time, long* fc_dq_time, long* fc_gemm_time, long* fc_gemm_call) {
+                           const std::vector<TBlob>& outputs, bool bCalTime, long* fc_mkl_time, long* fc_q_time, long* fc_dq_time, long* fc_gemm_time, long* fc_gemm_call, MKL_INT8* data_int8, MKL_INT8* wmat_int8, MKL_INT32* out_int8) {
   const FullyConnectedParam& param = nnvm::get<FullyConnectedParam>(attrs.parsed);
   uint32_t in_expected = param.no_bias ? 2 : 3;
   CHECK_EQ(inputs.size(), in_expected);
@@ -375,10 +378,10 @@ void FullyConnectedCompute_int8(const nnvm::NodeAttrs& attrs,
 
   switch (dtype) {
   case mshadow::kFloat32:
-    FCForward_int8<xpu, float>(ctx, param, inputs, req, outputs, bCalTime, fc_mkl_time, fc_q_time, fc_dq_time, fc_gemm_time, fc_gemm_call);
+    FCForward_int8<xpu, float>(ctx, param, inputs, req, outputs, bCalTime, fc_mkl_time, fc_q_time, fc_dq_time, fc_gemm_time, fc_gemm_call, data_int8, wmat_int8, out_int8);
     break;
   case mshadow::kFloat64:
-    FCForward_int8<xpu, double>(ctx, param, inputs, req, outputs, bCalTime, fc_mkl_time, fc_q_time, fc_dq_time, fc_gemm_time, fc_gemm_call);
+    FCForward_int8<xpu, double>(ctx, param, inputs, req, outputs, bCalTime, fc_mkl_time, fc_q_time, fc_dq_time, fc_gemm_time, fc_gemm_call, data_int8, wmat_int8, out_int8);
     break;
   case mshadow::kFloat16:
     LOG(FATAL) << "float16 fully connected layer is currently"

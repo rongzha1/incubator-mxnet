@@ -35,6 +35,12 @@ long fc_q_time = 0;
 long fc_dq_time = 0;
 long fc_gemm_time = 0;
 long fc_gemm_call = 0;
+MKL_INT8* data_int8 = reinterpret_cast<MKL_INT8* >
+      (mkl_calloc(640 * 1024, sizeof(MKL_INT8), 64));
+MKL_INT8* wmat_int8 = reinterpret_cast<MKL_INT8* >
+      (mkl_calloc(22666 * 512, sizeof(MKL_INT8), 64));
+MKL_INT32* out_int8 = reinterpret_cast<MKL_INT32* >
+  (mkl_calloc(22666 * 640, sizeof(MKL_INT32), 64));
 
 namespace mxnet {
 namespace op {
@@ -138,7 +144,7 @@ void FullyConnectedComputeExCPU(const nnvm::NodeAttrs& attrs,
     std::vector<TBlob> out_blobs(outputs.size());
     for (size_t i = 0; i < out_blobs.size(); i++) out_blobs[i] = outputs[i].data();
     if (ctx.is_train == 0) { //inference
-      FullyConnectedCompute_int8<cpu>(attrs, ctx, in_blobs, req, out_blobs, bCalTime, &fc_mkl_time, &fc_q_time, &fc_dq_time, &fc_gemm_time, &fc_gemm_call);
+      FullyConnectedCompute_int8<cpu>(attrs, ctx, in_blobs, req, out_blobs, bCalTime, &fc_mkl_time, &fc_q_time, &fc_dq_time, &fc_gemm_time, &fc_gemm_call, data_int8, wmat_int8, out_int8);
     } else {
       FullyConnectedCompute<cpu>(attrs, ctx, in_blobs, req, out_blobs);
     }
