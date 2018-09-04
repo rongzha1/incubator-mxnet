@@ -40,6 +40,7 @@
 #include "./operator_common.h"
 #include "./mshadow_op.h"
 #include "./linalg.h"
+#include <cfenv>
 
 namespace mxnet {
 namespace op {
@@ -56,45 +57,47 @@ inline DType relu(DType x) {
 
 template<typename DType>
 inline DType getmax(DType* x, size_t size) {
-  float min = x[0];
-  float max = x[0];
-  float ret = 1.0f;
-  if (size > 1) {
-    for (size_t i = 1; i < size; i++) {
-      if (x[i] > max) {
-        max = x[i];
-      }
-      if (x[i] < min) {
-       min = x[i];
-     }
-    }
-  }
-  if (fabs(max) > fabs(min)) {
-    ret = fabs(max) == 0.0f ? 1.0f : fabs(max);
+  DType ret=0;
+  if(std::is_same<float, DType>::value)
+  {
+//    CBLAS_INDEX cblas_isamax (const MKL_INT n, const float *x, const MKL_INT incx);
+    CBLAS_INDEX idx = cblas_isamax(size, (float*)x, 1);
+    ret = (x[idx] != 0) ? fabs(x[idx]) : 1;
+  } else if (std::is_same<double, DType>::value) {
+    CBLAS_INDEX idx = cblas_idamax(size, (double*)x, 1);
+    ret = (x[idx] != 0) ? fabs(x[idx]) : 1;
   } else {
-    ret = fabs(min) == 0.0f ? 1.0f : fabs(min);
+    LOG(INFO) << "not support";
   }
-//  LOG(INFO) << ret;
   return ret;
 }
 
 template<typename DType>
 void scale_data(DType* x, size_t size, float factor, MKL_INT8* x_out, int shift) {
   const int omp_threads = mxnet::engine::OpenMP::Get()->GetRecommendedOMPThreadCount();
+#if 0
   float* tmp = new float[size];
   float* y = new float[size];
   #pragma omp parallel for num_threads(omp_threads)
-  for (size_t i = 0; i < size; ++i) {    
+  for (size_t i = 0; i < size; ++i) {
     tmp[i] = x[i] * factor;
   }
   vsNearbyInt((MKL_INT)size, tmp, y );
   #pragma omp parallel for num_threads(omp_threads)
-  for (size_t i = 0; i < size; ++i) {    
+  for (size_t i = 0; i < size; ++i) {
     x_out[i] = y[i] + shift;
   }
   delete[] tmp;
   delete[] y;
+#endif
+  std::fesetround(FE_TONEAREST);
+  #pragma omp parallel for num_threads(omp_threads)
+  for (size_t i = 0; i < size; ++i) {
+    float tmp = x[i] * factor + shift;
+    x_out[i] = std::nearbyint(tmp);
+  }
 }
+
 
 /*
 template<typename DType>
