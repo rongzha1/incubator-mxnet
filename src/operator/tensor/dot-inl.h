@@ -1410,7 +1410,7 @@ void BatchDotForward_CPU_(const nnvm::NodeAttrs& attrs,
         if(bdCalTime) {
           gettimeofday(&start, NULL );
         }
-        float factor_lr = quantilize(mlhs[i].dptr_, mrhs[i].dptr_, reinterpret_cast<int>(m),
+        float factor_lr = quantilize_offline(mlhs[i].dptr_, mrhs[i].dptr_, reinterpret_cast<int>(m),
             reinterpret_cast<int>(n), reinterpret_cast<int>(k),
             mlhs_int8, mrhs_int8, param.transpose_b);
         if(bdCalTime) {

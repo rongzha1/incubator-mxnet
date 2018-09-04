@@ -153,6 +153,16 @@ inline DType quantilize(DType* x, DType* y, int m, int n, int k, MKL_INT8* x_int
 }
 
 template<typename DType>
+inline DType quantilize_offline(DType* x, DType* y, int m, int n, int k, MKL_INT8* x_int8,
+                        MKL_INT8* y_int8, int transpose_b, float lmax = 1.0, float rmax = 1.0) {
+  float factor_l = 63 / lmax;
+  float factor_r = 127 / rmax;
+  scale_data(x, m * k, factor_l, x_int8, 64);
+  scale_data(y, k * n, factor_r, y_int8, 0);
+  return factor_l * factor_r;
+}
+
+template<typename DType>
 void dequantilize(MKL_INT32* x, size_t size, float factor, DType* x_out) {
   const int omp_threads = mxnet::engine::OpenMP::Get()->GetRecommendedOMPThreadCount();
   #pragma omp parallel for num_threads(omp_threads)
