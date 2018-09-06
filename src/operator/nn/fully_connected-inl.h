@@ -116,10 +116,12 @@ void FCForward(const OpContext &ctx, const FullyConnectedParam &param,
   }
 }
 
+
+//data uint8
 template<typename xpu, typename DType>
 void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
                const std::vector<TBlob> &in_data, const std::vector<OpReqType> &req,
-               const std::vector<TBlob> &out_data, bool bCalTime, long* fc_mkl_time, long* fc_q_time, long* fc_dq_time, long* fc_gemm_time, long* fc_gemm_call, MKL_INT8* data_int8, MKL_INT8* wmat_int8, MKL_INT32* out_int8) {
+               const std::vector<TBlob> &out_data, bool bCalTime, long* fc_mkl_time, long* fc_q_time, long* fc_dq_time, long* fc_gemm_time, long* fc_gemm_call, MKL_UINT8* data_int8, MKL_INT8* wmat_int8, MKL_INT32* out_int8) {
   using namespace mshadow;
   using namespace mshadow::expr;
   if (req[fullc::kOut] == kNullOp) return;
@@ -186,7 +188,9 @@ void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
   ldc = n;
   DType alpha = 1.0;
   DType beta = 0.0;
-  MKL_INT  ao = -64, bo = 0, co = 0;
+  MKL_INT  ao = -128, bo = 0, co = 0;
+
+  
 
   if(bCalTime) {
     gettimeofday(&end, NULL );
@@ -226,6 +230,7 @@ void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
   cblas_gemm_s8u8s32(layout, trans_a, trans_b, CblasFixOffset,
     m, n, k, alpha, data_int8, lda, ao, wmat_int8, ldb, bo, beta,
     out_int8, ldc, &co);
+
   if(bCalTime) {
     (*fc_gemm_call)++;
     gettimeofday(&end, NULL );
@@ -364,12 +369,13 @@ void FullyConnectedCompute(const nnvm::NodeAttrs& attrs,
   }
 }
 
+//data uint8
 template<typename xpu>
 void FullyConnectedCompute_int8(const nnvm::NodeAttrs& attrs,
                            const OpContext& ctx,
                            const std::vector<TBlob>& inputs,
                            const std::vector<OpReqType>& req,
-                           const std::vector<TBlob>& outputs, bool bCalTime, long* fc_mkl_time, long* fc_q_time, long* fc_dq_time, long* fc_gemm_time, long* fc_gemm_call, MKL_INT8* data_int8, MKL_INT8* wmat_int8, MKL_INT32* out_int8) {
+                           const std::vector<TBlob>& outputs, bool bCalTime, long* fc_mkl_time, long* fc_q_time, long* fc_dq_time, long* fc_gemm_time, long* fc_gemm_call, MKL_UINT8* data_int8, MKL_INT8* wmat_int8, MKL_INT32* out_int8) {
   const FullyConnectedParam& param = nnvm::get<FullyConnectedParam>(attrs.parsed);
   uint32_t in_expected = param.no_bias ? 2 : 3;
   CHECK_EQ(inputs.size(), in_expected);

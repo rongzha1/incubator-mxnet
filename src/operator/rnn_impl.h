@@ -73,6 +73,17 @@ inline DType getmax(DType* x, size_t size) {
 }
 
 template<typename DType>
+void scale_data(DType* x, size_t size, float factor, MKL_UINT8* x_out, int shift) {
+  const int omp_threads = mxnet::engine::OpenMP::Get()->GetRecommendedOMPThreadCount();
+  std::fesetround(FE_TONEAREST);
+  #pragma omp parallel for num_threads(omp_threads)
+  for (size_t i = 0; i < size; ++i) {
+    float tmp = x[i] * factor + shift;
+    x_out[i] = std::nearbyint(tmp);
+  }
+}
+
+template<typename DType>
 void scale_data(DType* x, size_t size, float factor, MKL_INT8* x_out, int shift) {
   const int omp_threads = mxnet::engine::OpenMP::Get()->GetRecommendedOMPThreadCount();
 #if 0
@@ -141,6 +152,19 @@ inline DType quantilize(DType* x, DType* y, int m, int n, int k, MKL_INT8* x_int
   return factor_l * factor_r;
 }
 */
+
+
+template<typename DType>
+inline DType quantilize(DType* x, DType* y, int m, int n, int k, MKL_UINT8* x_int8,
+                        MKL_INT8* y_int8, int transpose_b) {
+  float factor_l = 127 / getmax(x, m * k);
+  float factor_r = 127 / getmax(y, k * n);
+  scale_data(x, m * k, factor_l, x_int8, 128);
+  scale_data(y, k * n, factor_r, y_int8, 0);
+  return factor_l * factor_r;
+}
+
+
 
 template<typename DType>
 inline DType quantilize(DType* x, DType* y, int m, int n, int k, MKL_INT8* x_int8,

@@ -35,8 +35,8 @@ long fc_q_time = 0;
 long fc_dq_time = 0;
 long fc_gemm_time = 0;
 long fc_gemm_call = 0;
-MKL_INT8* data_int8 = reinterpret_cast<MKL_INT8* >
-      (mkl_calloc(640 * 1024, sizeof(MKL_INT8), 64));
+MKL_UINT8* data_int8 = reinterpret_cast<MKL_UINT8* >
+      (mkl_calloc(640 * 1024, sizeof(MKL_UINT8), 64));
 MKL_INT8* wmat_int8 = reinterpret_cast<MKL_INT8* >
       (mkl_calloc(22666 * 512, sizeof(MKL_INT8), 64));
 MKL_INT32* out_int8 = reinterpret_cast<MKL_INT32* >
