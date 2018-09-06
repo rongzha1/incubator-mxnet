@@ -36,11 +36,11 @@ long fc_dq_time = 0;
 long fc_gemm_time = 0;
 long fc_gemm_call = 0;
 MKL_UINT8* data_int8 = reinterpret_cast<MKL_UINT8* >
-      (mkl_calloc(640 * 1024, sizeof(MKL_UINT8), 64));
+      (mkl_calloc(2560 * 1024, sizeof(MKL_UINT8), 64));
 MKL_INT8* wmat_int8 = reinterpret_cast<MKL_INT8* >
       (mkl_calloc(22666 * 512, sizeof(MKL_INT8), 64));
 MKL_INT32* out_int8 = reinterpret_cast<MKL_INT32* >
-  (mkl_calloc(22666 * 640, sizeof(MKL_INT32), 64));
+  (mkl_calloc(22666 * 2560, sizeof(MKL_INT32), 64));
 
 namespace mxnet {
 namespace op {
