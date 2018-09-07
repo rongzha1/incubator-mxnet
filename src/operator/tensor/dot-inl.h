@@ -49,6 +49,7 @@ long bd_q_time = 0;
 long bd_dq_time = 0;
 long bd_gemm_time = 0;
 long bd_gemm_call = 0;
+float bd_offlinemax =  getenv("BDOFFLINEMAX") ? atof(getenv("BDOFFLINEMAX")) : 1.0f;
 
 namespace mxnet {
 namespace op {
@@ -1332,7 +1333,7 @@ void DotBackwardEx(const nnvm::NodeAttrs& attrs,
 }
 
 template<typename xpu>
-void BatchDotForward_CPU_(const nnvm::NodeAttrs& attrs,
+void BatchDotForward_int8_(const nnvm::NodeAttrs& attrs,
                       const OpContext& ctx,
                       const std::vector<TBlob>& inputs,
                       const std::vector<OpReqType>& req,
@@ -1412,7 +1413,7 @@ void BatchDotForward_CPU_(const nnvm::NodeAttrs& attrs,
         }
         float factor_lr = quantilize_offline(mlhs[i].dptr_, mrhs[i].dptr_, reinterpret_cast<int>(m),
             reinterpret_cast<int>(n), reinterpret_cast<int>(k),
-            mlhs_int8, mrhs_int8, param.transpose_b);
+            mlhs_int8, mrhs_int8, param.transpose_b, bd_offlinemax, bd_offlinemax);
         if(bdCalTime) {
           gettimeofday(&end, NULL );
           if (end.tv_sec == start.tv_sec) {
