@@ -110,7 +110,7 @@ void scale_data(DType* x, size_t size, float factor, MKL_INT8* x_out, int shift)
 }
 
 
-/*
+
 template<typename DType>
 void prepare_sum_data(MKL_INT8* x, int n, int k, MKL_INT32* x_out, DType transpose_b) {
   const int omp_threads = mxnet::engine::OpenMP::Get()->GetRecommendedOMPThreadCount();
@@ -151,9 +151,21 @@ inline DType quantilize(DType* x, DType* y, int m, int n, int k, MKL_INT8* x_int
   }
   return factor_l * factor_r;
 }
-*/
 
+template<typename DType>
+inline DType quantilize(DType* x, DType* y, int m, int n, int k, MKL_UINT8* x_int8,
+                        MKL_INT8* y_int8, MKL_INT32* sum_int8, int transpose_b, bool recalculate) {
+  float factor_l = 63 / getmax(x, m * k);
+  float factor_r = 127 / getmax(y, k * n);
+  scale_data(x, m * k, factor_l, x_int8, 64);
+  scale_data(y, k * n, factor_r, y_int8, 0);
+  if (recalculate) {
+    prepare_sum_data(y_int8, n, k, sum_int8, transpose_b);
+  }
+  return factor_l * factor_r;
+}
 
+/*
 template<typename DType>
 inline DType quantilize(DType* x, DType* y, int m, int n, int k, MKL_UINT8* x_int8,
                         MKL_INT8* y_int8, int transpose_b) {
@@ -175,14 +187,18 @@ inline DType quantilize(DType* x, DType* y, int m, int n, int k, MKL_INT8* x_int
   scale_data(y, k * n, factor_r, y_int8, 0);
   return factor_l * factor_r;
 }
+*/
 
 template<typename DType>
 inline DType quantilize_offline(DType* x, DType* y, int m, int n, int k, MKL_INT8* x_int8,
-                        MKL_INT8* y_int8, int transpose_b, float lmax = 1.0, float rmax = 1.0) {
-  float factor_l = 63 / lmax;
-  float factor_r = 127 / rmax;
+                        MKL_INT8* y_int8, MKL_INT32* sum_int8, int transpose_b, bool recalculate, float lmax = 1.0, float rmax = 1.0) {
+  float factor_l = 63 / getmax(x, m * k);
+  float factor_r = 127 / getmax(y, k * n);
   scale_data(x, m * k, factor_l, x_int8, 64);
   scale_data(y, k * n, factor_r, y_int8, 0);
+  if (recalculate) {
+    prepare_sum_data(y_int8, n, k, sum_int8, transpose_b);
+  }
   return factor_l * factor_r;
 }
 
@@ -497,12 +513,13 @@ void LstmForwardInferenceSingleLayer_int8(DType* ws,
   const int cell_size = N * H;
   const int omp_threads = mxnet::engine::OpenMP::Get()->GetRecommendedOMPThreadCount();
 
-  MKL_INT  ao = -64, bo = 0, co = 0;
+  MKL_INT  ao = 0, bo = 0;
+//  MKL_INT co = 0;
   MKL_INT8* x_int8 = reinterpret_cast<MKL_INT8* > (mkl_calloc(T * N * I, sizeof(MKL_INT8), 64));
   MKL_INT8* wx_int8 = reinterpret_cast<MKL_INT8* > (mkl_calloc(4 * H * I, sizeof(MKL_INT8), 64));
   MKL_INT8* wh_int8 = reinterpret_cast<MKL_INT8* > (mkl_calloc(4 * H * H, sizeof(MKL_INT8), 64));
-//  MKL_INT32* wx_sum_int8 = reinterpret_cast<MKL_INT32* > (mkl_calloc(4 * H, sizeof(MKL_INT32), 64));
-//  MKL_INT32* wh_sum_int8 = reinterpret_cast<MKL_INT32* > (mkl_calloc(4 * H, sizeof(MKL_INT32), 64));
+  MKL_INT32* wx_sum_int8 = reinterpret_cast<MKL_INT32* > (mkl_calloc(4 * H, sizeof(MKL_INT32), 64));
+  MKL_INT32* wh_sum_int8 = reinterpret_cast<MKL_INT32* > (mkl_calloc(4 * H, sizeof(MKL_INT32), 64));
   MKL_INT8* h_int8 = reinterpret_cast<MKL_INT8* > (mkl_calloc(N * H, sizeof(MKL_INT8), 64));
   MKL_INT32* yx_flat_int8 = reinterpret_cast<MKL_INT32* >
       (mkl_calloc(T * N * 4 * H, sizeof(MKL_INT32), 64));
@@ -510,17 +527,17 @@ void LstmForwardInferenceSingleLayer_int8(DType* ws,
       (mkl_calloc(N * 4 * H, sizeof(MKL_INT32), 64));
 
   //  linalg_gemm(x, wx, yx_flat, alpha, beta, false, true);
-  float factor_lr = quantilize(x.dptr_, wx.dptr_, N * T, 4 * H, I, x_int8, wx_int8, 1);
-/*
+  float factor_lr = quantilize(x.dptr_, wx.dptr_, N * T, 4 * H, I, x_int8, wx_int8, wx_sum_int8, 1, true);
+
   cblas_gemm_s8u8s32(CblasRowMajor, CblasNoTrans, CblasTrans, CblasRowOffset,
       N * T, 4 * H, I, alpha, x_int8, I, ao, wx_int8, I, bo, beta,
       yx_flat_int8, 4 * H, wx_sum_int8);
-*/
 
+/*
   cblas_gemm_s8u8s32(CblasRowMajor, CblasNoTrans, CblasTrans, CblasFixOffset,
       N * T, 4 * H, I, alpha, x_int8, I, ao, wx_int8, I, bo, beta,
       yx_flat_int8, 4 * H, &co);
-
+*/
   dequantilize(yx_flat_int8, T * N * 4 * H, factor_lr, yx_flat.dptr_);
 
   for (int i = 0; i < T; ++i) {
@@ -528,16 +545,17 @@ void LstmForwardInferenceSingleLayer_int8(DType* ws,
 
     //  linalg_gemm(i ? h : hx, wh, yh_flat, alpha, beta, false, true);
     DType* ht_1 = i ? h.dptr_ : hx.dptr_;
-    factor_lr = quantilize(ht_1, wh.dptr_, N, 4 * H, H, h_int8, wh_int8, 1);
-/*
+    bool recal = i ? false : true;
+    factor_lr = quantilize(ht_1, wh.dptr_, N, 4 * H, H, h_int8, wh_int8, wh_sum_int8, 1, recal);
+
     cblas_gemm_s8u8s32(CblasRowMajor, CblasNoTrans, CblasTrans,
         CblasRowOffset, N, 4 * H, H, alpha, h_int8, H, ao,
         wh_int8, H, bo, beta, yh_flat_int8, 4 * H, wh_sum_int8);
-*/
+/*
     cblas_gemm_s8u8s32(CblasRowMajor, CblasNoTrans, CblasTrans,
         CblasFixOffset, N, 4 * H, H, alpha, h_int8, H, ao,
         wh_int8, H, bo, beta, yh_flat_int8, 4 * H, &co);
-
+*/
     dequantilize(yh_flat_int8, N * 4 * H, factor_lr, yh_flat.dptr_);
 
     #pragma omp parallel for num_threads(omp_threads)
@@ -564,8 +582,8 @@ void LstmForwardInferenceSingleLayer_int8(DType* ws,
   mkl_free(x_int8);
   mkl_free(wx_int8);
   mkl_free(wh_int8);
-//  mkl_free(wx_sum_int8);
-//  mkl_free(wh_sum_int8);
+  mkl_free(wx_sum_int8);
+  mkl_free(wh_sum_int8);
   mkl_free(yx_flat_int8);
   mkl_free(yh_flat_int8);
   mkl_free(h_int8);
