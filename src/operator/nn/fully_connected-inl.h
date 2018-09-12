@@ -187,9 +187,9 @@ void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
   ldb = k;
   ldc = n;
   DType alpha = 1.0;
-  DType beta = 0.0;
+  DType beta = 1.0;
   MKL_INT  ao = 0, bo = 0;
-  //  MKL_INT co = 0;
+  MKL_INT co = 0;
   
 
   if(bCalTime) {
@@ -204,10 +204,14 @@ void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
     LOG(INFO) << "costtime:" << (float)costtime/1000 << "ms" << " fc_mkl_time:" << (float)(*fc_mkl_time)/1000 << "ms";
     gettimeofday(&start, NULL );
   }
-
+/*
   float factor_lr = quantilize(data.dptr_, wmat.dptr_, reinterpret_cast<int>(m),
       reinterpret_cast<int>(n), reinterpret_cast<int>(k),
   data_int8, wmat_int8, wmat_sum_int8, true, true);
+*/
+  float factor_lr = quantilize(data.dptr_, wmat.dptr_, reinterpret_cast<int>(m),
+      reinterpret_cast<int>(n), reinterpret_cast<int>(k),
+  data_int8, wmat_int8, wmat_sum_int8, out_int8, true, true);
 
   if(bCalTime) {
     gettimeofday(&end, NULL );
@@ -222,15 +226,15 @@ void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
     gettimeofday(&start, NULL );
   }
 
-
+/*
   cblas_gemm_s8u8s32(layout, trans_a, trans_b, CblasRowOffset,
     m, n, k, alpha, data_int8, lda, ao, wmat_int8, ldb, bo, beta,
     out_int8, ldc, wmat_sum_int8);
-/*
+*/
   cblas_gemm_s8u8s32(layout, trans_a, trans_b, CblasFixOffset,
     m, n, k, alpha, data_int8, lda, ao, wmat_int8, ldb, bo, beta,
     out_int8, ldc, &co);
-*/
+
   if(bCalTime) {
     (*fc_gemm_call)++;
     gettimeofday(&end, NULL );

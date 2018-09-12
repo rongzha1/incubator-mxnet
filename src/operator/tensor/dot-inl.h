@@ -1392,9 +1392,9 @@ void BatchDotForward_int8_(const nnvm::NodeAttrs& attrs,
       }
       ldc = (layout == CblasRowMajor) ? n : m;
       DType alpha = 1.0;
-      DType beta = 0.0;
+      DType beta = 1.0;
       MKL_INT  ao = 0, bo = 0;
-      //  MKL_INT co = 0;
+      MKL_INT co = 0;
       if(bdCalTime) {
         gettimeofday(&end, NULL );
         if (end.tv_sec == start.tv_sec) {
@@ -1414,7 +1414,7 @@ void BatchDotForward_int8_(const nnvm::NodeAttrs& attrs,
         }
         float factor_lr = quantilize_offline(mlhs[i].dptr_, mrhs[i].dptr_, reinterpret_cast<int>(m),
             reinterpret_cast<int>(n), reinterpret_cast<int>(k),
-            mlhs_int8, mrhs_int8, mrhs_sum_int8, param.transpose_b, true, bd_offlinemax, bd_offlinemax);
+            mlhs_int8, mrhs_int8, mrhs_sum_int8, out_int8, param.transpose_b, true, bd_offlinemax, bd_offlinemax);
         if(bdCalTime) {
           gettimeofday(&end, NULL );
           if (end.tv_sec == start.tv_sec) {
@@ -1425,16 +1425,16 @@ void BatchDotForward_int8_(const nnvm::NodeAttrs& attrs,
           (bd_q_time) += costtime;
           gettimeofday(&start, NULL );
         }
-
+/*
         cblas_gemm_s8u8s32(layout, trans_a, trans_b, CblasRowOffset,
           m, n, k, alpha, mlhs_int8, lda, ao, mrhs_int8, ldb, bo, beta,
           out_int8, ldc, mrhs_sum_int8);
+*/
 
-/*
         cblas_gemm_s8u8s32(layout, trans_a, trans_b, CblasFixOffset,
           m, n, k, alpha, mlhs_int8, lda, ao, mrhs_int8, ldb, bo, beta,
           out_int8, ldc, &co);
-*/
+
         if(bdCalTime) {
           bd_gemm_call++;
           gettimeofday(&end, NULL );
