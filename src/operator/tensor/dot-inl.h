@@ -1392,8 +1392,8 @@ void BatchDotForward_int8_(const nnvm::NodeAttrs& attrs,
       }
       ldc = (layout == CblasRowMajor) ? n : m;
       DType alpha = 1.0;
-      DType beta = 1.0;
-      MKL_INT  ao = 0, bo = 0;
+      DType beta = 0.0;
+      MKL_INT  ao = -64, bo = 0;
       MKL_INT co = 0;
       if(bdCalTime) {
         gettimeofday(&end, NULL );
@@ -1412,9 +1412,14 @@ void BatchDotForward_int8_(const nnvm::NodeAttrs& attrs,
         if(bdCalTime) {
           gettimeofday(&start, NULL );
         }
+/*
         float factor_lr = quantilize_offline(mlhs[i].dptr_, mrhs[i].dptr_, reinterpret_cast<int>(m),
             reinterpret_cast<int>(n), reinterpret_cast<int>(k),
             mlhs_int8, mrhs_int8, mrhs_sum_int8, out_int8, param.transpose_b, true, bd_offlinemax, bd_offlinemax);
+*/
+        float factor_lr = quantilize_offline_pre(mlhs[i].dptr_, mrhs[i].dptr_, reinterpret_cast<int>(m),
+            reinterpret_cast<int>(n), reinterpret_cast<int>(k),
+            mlhs_int8, mrhs_int8, param.transpose_b, bd_offlinemax, bd_offlinemax);
         if(bdCalTime) {
           gettimeofday(&end, NULL );
           if (end.tv_sec == start.tv_sec) {
