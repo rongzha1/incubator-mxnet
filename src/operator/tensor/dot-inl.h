@@ -1417,7 +1417,7 @@ void BatchDotForward_int8_(const nnvm::NodeAttrs& attrs,
             reinterpret_cast<int>(n), reinterpret_cast<int>(k),
             mlhs_int8, mrhs_int8, mrhs_sum_int8, out_int8, param.transpose_b, true, bd_offlinemax, bd_offlinemax);
 */
-        float factor_lr = quantilize_offline_pre(mlhs[i].dptr_, mrhs[i].dptr_, reinterpret_cast<int>(m),
+        float factor_lr = quantilize_offline(mlhs[i].dptr_, mrhs[i].dptr_, reinterpret_cast<int>(m),
             reinterpret_cast<int>(n), reinterpret_cast<int>(k),
             mlhs_int8, mrhs_int8, param.transpose_b, bd_offlinemax, bd_offlinemax);
         if(bdCalTime) {
