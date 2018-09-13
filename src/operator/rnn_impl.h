@@ -147,15 +147,16 @@ inline DType quantilize(DType* x, DType* y, int m, int n, int k, MKL_UINT8* x_in
   scale_data(x, m * k, factor_l, x_int8, 128);
   scale_data(y, k * n, factor_r, y_int8, 0);
   if (recalculate) {
-    prepare_sum_data(y_int8, n, k, sum_int8, transpose_b, 128);
+  //  prepare_sum_data(y_int8, n, k, sum_int8, transpose_b, 128);
+    prepare_sum_data(y_int8, n, k, out_int8, transpose_b, 128);
   }
   const int omp_threads = mxnet::engine::OpenMP::Get()->GetRecommendedOMPThreadCount();
   #pragma omp parallel for num_threads(omp_threads)
-  for (int i = 0; i < n; ++i) {
-    for (int j = 0; j < m; ++j) {
-      out_int8[j * n + i] = sum_int8[i];
+  for (int j = 1; j < m; ++j) {
+    for (int i = 0; i < n; ++i) {
+      out_int8[j * n + i] = out_int8[i];
     }
-  }
+  } 
   return factor_l * factor_r;
 }
 
@@ -167,13 +168,14 @@ inline DType quantilize(DType* x, DType* y, int m, int n, int k, MKL_INT8* x_int
   scale_data(x, m * k, factor_l, x_int8, 64);
   scale_data(y, k * n, factor_r, y_int8, 0);
   if (recalculate) {
-    prepare_sum_data(y_int8, n, k, sum_int8, transpose_b, 64);
+    //  prepare_sum_data(y_int8, n, k, sum_int8, transpose_b, 64);
+    prepare_sum_data(y_int8, n, k, out_int8, transpose_b, 64);
   }
   const int omp_threads = mxnet::engine::OpenMP::Get()->GetRecommendedOMPThreadCount();
   #pragma omp parallel for num_threads(omp_threads)
-  for (int i = 0; i < n; ++i) {
-    for (int j = 0; j < m; ++j) {
-      out_int8[j * n + i] = sum_int8[i];
+  for (int j = 1; j < m; ++j) {
+    for (int i = 0; i < n; ++i) {    
+      out_int8[j * n + i] = out_int8[i];
     }
   }
   return factor_l * factor_r;
@@ -211,13 +213,14 @@ inline DType quantilize_offline(DType* x, DType* y, int m, int n, int k, MKL_INT
   scale_data(x, m * k, factor_l, x_int8, 64);
   scale_data(y, k * n, factor_r, y_int8, 0);
   if (recalculate) {
-    prepare_sum_data(y_int8, n, k, sum_int8, transpose_b, 64);
+  //  prepare_sum_data(y_int8, n, k, sum_int8, transpose_b, 64);
+    prepare_sum_data(y_int8, n, k, out_int8, transpose_b, 64);
   }
   const int omp_threads = mxnet::engine::OpenMP::Get()->GetRecommendedOMPThreadCount();
   #pragma omp parallel for num_threads(omp_threads)
-  for (int i = 0; i < n; ++i) {
-    for (int j = 0; j < m; ++j) {
-      out_int8[j * n + i] = sum_int8[i];
+  for (int j = 1; j < m; ++j) {
+    for (int i = 0; i < n; ++i) {    
+      out_int8[j * n + i] = out_int8[i];
     }
   }
   return factor_l * factor_r;
@@ -230,7 +233,6 @@ inline DType quantilize_offline_pre(DType* x, DType* y, int m, int n, int k, MKL
   float factor_r = 127 / rmax;
   scale_data(x, m * k, factor_l, x_int8, 64);
   scale_data(y, k * n, factor_r, y_int8, 0);
-
   return factor_l * factor_r;
 }
 
