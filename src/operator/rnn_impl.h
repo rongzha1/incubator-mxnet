@@ -144,10 +144,10 @@ inline DType quantilize(DType* x, DType* y, int m, int n, int k, MKL_UINT8* x_in
                         MKL_INT8* y_int8, MKL_INT32* sum_int8, MKL_INT32* out_int8, int transpose_b, bool recalculate) {
   float factor_l = 63 / getmax(x, m * k);
   float factor_r = 127 / getmax(y, k * n);
-  scale_data(x, m * k, factor_l, x_int8, 64);
+  scale_data(x, m * k, factor_l, x_int8, 128);
   scale_data(y, k * n, factor_r, y_int8, 0);
   if (recalculate) {
-    prepare_sum_data(y_int8, n, k, sum_int8, transpose_b, 64);
+    prepare_sum_data(y_int8, n, k, sum_int8, transpose_b, 128);
   }
   const int omp_threads = mxnet::engine::OpenMP::Get()->GetRecommendedOMPThreadCount();
   #pragma omp parallel for num_threads(omp_threads)
