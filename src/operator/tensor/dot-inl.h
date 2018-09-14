@@ -49,6 +49,7 @@ long bd_q_time = 0;
 long bd_dq_time = 0;
 long bd_gemm_time = 0;
 long bd_gemm_call = 0;
+long bd_scale_time = 0;
 float bd_offlinemax =  getenv("BDOFFLINEMAX") ? atof(getenv("BDOFFLINEMAX")) : 1.0f;
 
 namespace mxnet {
@@ -1417,9 +1418,29 @@ void BatchDotForward_int8_(const nnvm::NodeAttrs& attrs,
             reinterpret_cast<int>(n), reinterpret_cast<int>(k),
             mlhs_int8, mrhs_int8, mrhs_sum_int8, out_int8, param.transpose_b, true, bd_offlinemax, bd_offlinemax);
 */
+/*
         float factor_lr = quantilize_offline(mlhs[i].dptr_, mrhs[i].dptr_, reinterpret_cast<int>(m),
             reinterpret_cast<int>(n), reinterpret_cast<int>(k),
             mlhs_int8, mrhs_int8, param.transpose_b, bd_offlinemax, bd_offlinemax);
+*/
+        // get detailed time
+        float factor_l = 63 / bd_offlinemax;
+        float factor_r = 127 / bd_offlinemax;
+        scale_data(mlhs[i].dptr_, reinterpret_cast<int>(m) * reinterpret_cast<int>(k), factor_l, mlhs_int8, 64);
+        scale_data(mrhs[i].dptr_, reinterpret_cast<int>(k) * reinterpret_cast<int>(n), factor_r, mrhs_int8, 0);
+        if(bdCalTime) {
+          gettimeofday(&end, NULL );
+          if (end.tv_sec == start.tv_sec) {
+            costtime = end.tv_usec - start.tv_usec;
+          } else {
+            costtime = (end.tv_sec-start.tv_sec)*1000000 + end.tv_usec - start.tv_usec;
+          }
+          (bd_scale_time) += costtime;
+          gettimeofday(&start, NULL );
+        }
+        float  factor_lr = factor_l * factor_r;
+        // get detailed time
+/*
         if(bdCalTime) {
           gettimeofday(&end, NULL );
           if (end.tv_sec == start.tv_sec) {
@@ -1430,6 +1451,7 @@ void BatchDotForward_int8_(const nnvm::NodeAttrs& attrs,
           (bd_q_time) += costtime;
           gettimeofday(&start, NULL );
         }
+*/
 /*
         cblas_gemm_s8u8s32(layout, trans_a, trans_b, CblasRowOffset,
           m, n, k, alpha, mlhs_int8, lda, ao, mrhs_int8, ldb, bo, beta,
@@ -1476,7 +1498,8 @@ void BatchDotForward_int8_(const nnvm::NodeAttrs& attrs,
         }
         (bd_mkl_time) += costtime;
         LOG(INFO) << "costtime:" << (float)costtime/1000 << "ms" << " bd_mkl_time:" << (float)(bd_mkl_time)/1000 << "ms";
-        LOG(INFO) << "bd_q_time:" << (float)(bd_q_time)/1000 << "ms";
+//        LOG(INFO) << "bd_q_time:" << (float)(bd_q_time)/1000 << "ms";
+        LOG(INFO) << "bd_scale_time:" << (float)(bd_scale_time)/1000 << "ms";
         LOG(INFO) << "bd_dq_time:" << (float)(bd_dq_time)/1000 << "ms";
         LOG(INFO) << "bd_gemm_time:" << (float)(bd_gemm_time)/1000 << "ms" << " bd_gemm_call:" << bd_gemm_call;
       }

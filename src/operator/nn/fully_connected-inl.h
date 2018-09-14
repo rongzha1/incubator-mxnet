@@ -121,7 +121,7 @@ void FCForward(const OpContext &ctx, const FullyConnectedParam &param,
 template<typename xpu, typename DType>
 void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
                const std::vector<TBlob> &in_data, const std::vector<OpReqType> &req,
-               const std::vector<TBlob> &out_data, bool bCalTime, long* fc_mkl_time, long* fc_q_time, long* fc_dq_time, long* fc_gemm_time, long* fc_gemm_call, MKL_UINT8* data_int8, MKL_INT8* wmat_int8, MKL_INT32* wmat_sum_int8, MKL_INT32* out_int8) {
+               const std::vector<TBlob> &out_data, bool bCalTime, long* fc_mkl_time, long* fc_q_time, long* fc_dq_time, long* fc_gemm_time, long* fc_gemm_call, long* fc_max_time, long* fc_scale_time, long* fc_sum_time, long* fc_copyoffset_time, MKL_UINT8* data_int8, MKL_INT8* wmat_int8, MKL_INT32* wmat_sum_int8, MKL_INT32* out_int8) {
   using namespace mshadow;
   using namespace mshadow::expr;
   if (req[fullc::kOut] == kNullOp) return;
@@ -209,10 +209,70 @@ void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
       reinterpret_cast<int>(n), reinterpret_cast<int>(k),
   data_int8, wmat_int8, wmat_sum_int8, true, true);
 */
+/*
   float factor_lr = quantilize(data.dptr_, wmat.dptr_, reinterpret_cast<int>(m),
       reinterpret_cast<int>(n), reinterpret_cast<int>(k),
   data_int8, wmat_int8, wmat_sum_int8, out_int8, true, true);
+*/
+// get detailed time
+  float factor_l = 63 / getmax(data.dptr_, reinterpret_cast<int>(m) * reinterpret_cast<int>(k));
+  float factor_r = 127 / getmax(wmat.dptr_, reinterpret_cast<int>(k) * reinterpret_cast<int>(n));
+  if(bCalTime) {
+    gettimeofday(&end, NULL );
+    //  LOG(INFO) << "end.tv_sec:" << end.tv_sec << " end.tv_usec:" << end.tv_usec;
+    if (end.tv_sec == start.tv_sec) {
+      costtime = end.tv_usec - start.tv_usec;
+    } else {
+      costtime = (end.tv_sec-start.tv_sec)*1000000 + end.tv_usec - start.tv_usec;
+    }
+    (*fc_max_time) += costtime;
+    LOG(INFO) << "costtime:" << (float)costtime/1000 << "ms" << " fc_max_time:" << (float)(*fc_max_time)/1000 << "ms";
+    gettimeofday(&start, NULL );
+  }
+  scale_data(data.dptr_, reinterpret_cast<int>(m) * reinterpret_cast<int>(k), factor_l, data_int8, 128);
+  scale_data(wmat.dptr_, reinterpret_cast<int>(k) * reinterpret_cast<int>(n), factor_r, wmat_int8, 0);
+  if(bCalTime) {
+    gettimeofday(&end, NULL );
+    //  LOG(INFO) << "end.tv_sec:" << end.tv_sec << " end.tv_usec:" << end.tv_usec;
+    if (end.tv_sec == start.tv_sec) {
+      costtime = end.tv_usec - start.tv_usec;
+    } else {
+      costtime = (end.tv_sec-start.tv_sec)*1000000 + end.tv_usec - start.tv_usec;
+    }
+    (*fc_scale_time) += costtime;
+    LOG(INFO) << "costtime:" << (float)costtime/1000 << "ms" << " fc_scale_time:" << (float)(*fc_scale_time)/1000 << "ms";
+    gettimeofday(&start, NULL );
+  }
+  prepare_sum_data(wmat_int8, reinterpret_cast<int>(n), reinterpret_cast<int>(k), out_int8, true, 128);
+  if(bCalTime) {
+    gettimeofday(&end, NULL );
+    //  LOG(INFO) << "end.tv_sec:" << end.tv_sec << " end.tv_usec:" << end.tv_usec;
+    if (end.tv_sec == start.tv_sec) {
+      costtime = end.tv_usec - start.tv_usec;
+    } else {
+      costtime = (end.tv_sec-start.tv_sec)*1000000 + end.tv_usec - start.tv_usec;
+    }
+    (*fc_sum_time) += costtime;
+    LOG(INFO) << "costtime:" << (float)costtime/1000 << "ms" << " fc_sum_time:" << (float)(*fc_sum_time)/1000 << "ms";
+    gettimeofday(&start, NULL );
+  }
+  copyoffset(out_int8, m, n);
+  if(bCalTime) {
+    gettimeofday(&end, NULL );
+    //  LOG(INFO) << "end.tv_sec:" << end.tv_sec << " end.tv_usec:" << end.tv_usec;
+    if (end.tv_sec == start.tv_sec) {
+      costtime = end.tv_usec - start.tv_usec;
+    } else {
+      costtime = (end.tv_sec-start.tv_sec)*1000000 + end.tv_usec - start.tv_usec;
+    }
+    (*fc_copyoffset_time) += costtime;
+    LOG(INFO) << "costtime:" << (float)costtime/1000 << "ms" << " fc_copyoffset_time:" << (float)(*fc_copyoffset_time)/1000 << "ms";
+    gettimeofday(&start, NULL );
+  }
+  float factor_lr = factor_l * factor_r;
+// get detailed time
 
+/*
   if(bCalTime) {
     gettimeofday(&end, NULL );
     //  LOG(INFO) << "end.tv_sec:" << end.tv_sec << " end.tv_usec:" << end.tv_usec;
@@ -225,6 +285,7 @@ void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
     LOG(INFO) << "costtime:" << (float)costtime/1000 << "ms" << " fc_q_time:" << (float)(*fc_q_time)/1000 << "ms";
     gettimeofday(&start, NULL );
   }
+*/
 
 /*
   cblas_gemm_s8u8s32(layout, trans_a, trans_b, CblasRowOffset,
@@ -379,7 +440,7 @@ void FullyConnectedCompute_int8(const nnvm::NodeAttrs& attrs,
                            const OpContext& ctx,
                            const std::vector<TBlob>& inputs,
                            const std::vector<OpReqType>& req,
-                           const std::vector<TBlob>& outputs, bool bCalTime, long* fc_mkl_time, long* fc_q_time, long* fc_dq_time, long* fc_gemm_time, long* fc_gemm_call, MKL_UINT8* data_int8, MKL_INT8* wmat_int8, MKL_INT32* wmat_sum_int8, MKL_INT32* out_int8) {
+                           const std::vector<TBlob>& outputs, bool bCalTime, long* fc_mkl_time, long* fc_q_time, long* fc_dq_time, long* fc_gemm_time, long* fc_gemm_call, long* fc_max_time, long* fc_scale_time, long* fc_sum_time, long* fc_copyoffset_time, MKL_UINT8* data_int8, MKL_INT8* wmat_int8, MKL_INT32* wmat_sum_int8, MKL_INT32* out_int8) {
   const FullyConnectedParam& param = nnvm::get<FullyConnectedParam>(attrs.parsed);
   uint32_t in_expected = param.no_bias ? 2 : 3;
   CHECK_EQ(inputs.size(), in_expected);
@@ -388,10 +449,10 @@ void FullyConnectedCompute_int8(const nnvm::NodeAttrs& attrs,
 
   switch (dtype) {
   case mshadow::kFloat32:
-    FCForward_int8<xpu, float>(ctx, param, inputs, req, outputs, bCalTime, fc_mkl_time, fc_q_time, fc_dq_time, fc_gemm_time, fc_gemm_call, data_int8, wmat_int8, wmat_sum_int8, out_int8);
+    FCForward_int8<xpu, float>(ctx, param, inputs, req, outputs, bCalTime, fc_mkl_time, fc_q_time, fc_dq_time, fc_gemm_time, fc_gemm_call, fc_max_time, fc_scale_time, fc_sum_time, fc_copyoffset_time, data_int8, wmat_int8, wmat_sum_int8, out_int8);
     break;
   case mshadow::kFloat64:
-    FCForward_int8<xpu, double>(ctx, param, inputs, req, outputs, bCalTime, fc_mkl_time, fc_q_time, fc_dq_time, fc_gemm_time, fc_gemm_call, data_int8, wmat_int8, wmat_sum_int8, out_int8);
+    FCForward_int8<xpu, double>(ctx, param, inputs, req, outputs, bCalTime, fc_mkl_time, fc_q_time, fc_dq_time, fc_gemm_time, fc_gemm_call, fc_max_time, fc_scale_time, fc_sum_time, fc_copyoffset_time, data_int8, wmat_int8, wmat_sum_int8, out_int8);
     break;
   case mshadow::kFloat16:
     LOG(FATAL) << "float16 fully connected layer is currently"

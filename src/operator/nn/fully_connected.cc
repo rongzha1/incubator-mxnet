@@ -32,6 +32,10 @@
 bool bCalTime = getenv("TIMELOG") ? true: false;
 long fc_mkl_time = 0;
 long fc_q_time = 0;
+long fc_max_time = 0;
+long fc_scale_time = 0;
+long fc_sum_time = 0;
+long fc_copyoffset_time = 0;
 long fc_dq_time = 0;
 long fc_gemm_time = 0;
 long fc_gemm_call = 0;
@@ -147,7 +151,7 @@ void FullyConnectedComputeExCPU(const nnvm::NodeAttrs& attrs,
     std::vector<TBlob> out_blobs(outputs.size());
     for (size_t i = 0; i < out_blobs.size(); i++) out_blobs[i] = outputs[i].data();
     if (ctx.is_train == 0) { //inference
-      FullyConnectedCompute_int8<cpu>(attrs, ctx, in_blobs, req, out_blobs, bCalTime, &fc_mkl_time, &fc_q_time, &fc_dq_time, &fc_gemm_time, &fc_gemm_call, data_int8, wmat_int8, wmat_sum_int8, out_int8);
+      FullyConnectedCompute_int8<cpu>(attrs, ctx, in_blobs, req, out_blobs, bCalTime, &fc_mkl_time, &fc_q_time, &fc_dq_time, &fc_gemm_time, &fc_gemm_call, &fc_max_time, &fc_scale_time, &fc_sum_time, &fc_copyoffset_time, data_int8, wmat_int8, wmat_sum_int8, out_int8);
     } else {
       FullyConnectedCompute<cpu>(attrs, ctx, in_blobs, req, out_blobs);
     }
