@@ -121,7 +121,7 @@ void FCForward(const OpContext &ctx, const FullyConnectedParam &param,
 template<typename xpu, typename DType>
 void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
                const std::vector<TBlob> &in_data, const std::vector<OpReqType> &req,
-               const std::vector<TBlob> &out_data, bool bCalTime, long* fc_mkl_time, long* fc_q_time, long* fc_dq_time, long* fc_gemm_time, long* fc_gemm_call, long* fc_max_time, long* fc_scale_time, long* fc_sum_time, long* fc_copyoffset_time, MKL_UINT8* data_int8, MKL_INT8* wmat_int8, MKL_INT32* wmat_sum_int8, MKL_INT32* out_int8) {
+               const std::vector<TBlob> &out_data, bool bCalTime, bool bCache, FILE* pFC, long* fc_mkl_time, long* fc_q_time, long* fc_dq_time, long* fc_gemm_time, long* fc_gemm_call, long* fc_max_time, long* fc_scale_time, long* fc_sum_time, long* fc_copyoffset_time, MKL_UINT8* data_int8, MKL_INT8* wmat_int8, MKL_INT32* wmat_sum_int8, MKL_INT32* out_int8) {
   using namespace mshadow;
   using namespace mshadow::expr;
   if (req[fullc::kOut] == kNullOp) return;
@@ -167,9 +167,12 @@ void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
 /*
   MKL_INT8* data_int8 = reinterpret_cast<MKL_INT8* >
       (mkl_calloc(data.shape_[0] * data.shape_[1], sizeof(MKL_INT8), 64));
-  MKL_INT8* wmat_int8 = reinterpret_cast<MKL_INT8* >
-      (mkl_calloc(wmat.shape_[0] * wmat.shape_[1], sizeof(MKL_INT8), 64));
+*/
+//  MKL_INT8* wmat2_int8 = NULL;
+// reinterpret_cast<MKL_INT8* >
+//      (mkl_calloc(wmat.shape_[0] * wmat.shape_[1], sizeof(MKL_INT8), 64));
 
+/*
 //  size_t sum_size = wmat.shape_[0];
 //  MKL_INT32* wmat_sum_int8 = reinterpret_cast<MKL_INT32* >
 //      (mkl_calloc(sum_size, sizeof(MKL_INT32), 64));
@@ -190,7 +193,6 @@ void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
   DType beta = 1.0;
   MKL_INT  ao = 0, bo = 0;
   MKL_INT co = 0;
-  
 
   if(bCalTime) {
     gettimeofday(&end, NULL );
@@ -214,9 +216,29 @@ void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
       reinterpret_cast<int>(n), reinterpret_cast<int>(k),
   data_int8, wmat_int8, wmat_sum_int8, out_int8, true, true);
 */
+
+  float factor_r = 0.0f;
+  char buf[1024];
+
+
+  if (!bCache && pFC != NULL) {
+    fgets(buf,sizeof(buf),pFC);
+    factor_r = atof(buf);
+  }
+  if (factor_r <= 0.0f) {
+    factor_r = 127 / getmax(wmat.dptr_, reinterpret_cast<int>(k) * reinterpret_cast<int>(n));
+  }
+  if (bCache) {
+    sprintf(buf, "%f\r\n", factor_r);
+    fputs(buf, pFC);
+  }
+
+
+
 // get detailed time
   float factor_l = 63 / getmax(data.dptr_, reinterpret_cast<int>(m) * reinterpret_cast<int>(k));
-  float factor_r = 127 / getmax(wmat.dptr_, reinterpret_cast<int>(k) * reinterpret_cast<int>(n));
+//  factor_r = 127 / getmax(wmat.dptr_, reinterpret_cast<int>(k) * reinterpret_cast<int>(n));
+  
   if(bCalTime) {
     gettimeofday(&end, NULL );
     //  LOG(INFO) << "end.tv_sec:" << end.tv_sec << " end.tv_usec:" << end.tv_usec;
@@ -231,6 +253,44 @@ void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
   }
   scale_data(data.dptr_, reinterpret_cast<int>(m) * reinterpret_cast<int>(k), factor_l, data_int8, 128);
   scale_data(wmat.dptr_, reinterpret_cast<int>(k) * reinterpret_cast<int>(n), factor_r, wmat_int8, 0);
+/*
+  LOG(INFO) << "correct wmat_int8[1]:" << (int)wmat_int8[1];
+  char* addr = wmat_int8;
+  LOG(INFO) << "get wmat_int8[1] from address:" << (int)addr[1];
+*/
+
+/*
+
+  if (!bCache && pFC != NULL) {
+    //fgets(buf, 8, pFC);
+    fread(buf, 9, 1, pFC);
+    wmat2_int8 = (MKL_INT8*)buf;
+    //memcpy(wmat2_int8, buf, 8);
+  } else {
+    wmat2_int8 = reinterpret_cast<MKL_INT8* >
+      (mkl_calloc(wmat.shape_[0] * wmat.shape_[1], sizeof(MKL_INT8), 64));
+  }
+  if (!bCache && pFC == NULL) {
+    scale_data(wmat.dptr_, reinterpret_cast<int>(k) * reinterpret_cast<int>(n), factor_r, wmat2_int8, 0);
+  }
+
+  if (bCache) {
+    scale_data(wmat.dptr_, reinterpret_cast<int>(k) * reinterpret_cast<int>(n), factor_r, wmat2_int8, 0);
+    // MKL_INT8* wmat_int8
+    char test_address[8];
+    //LOG(INFO) << "wmat_int8:" << wmat_int8;
+    memcpy(test_address, wmat2_int8, 8);
+    sprintf(buf, "%s\r\n", test_address);
+    fputs(buf, pFC);
+
+    //sprintf(buf, "%s\r\n", test_address);
+    //MKL_INT8* testdata = (MKL_INT8*)buf;
+    //LOG(INFO) << "wmat2_int8[0]:" << (int)wmat2_int8[0];
+    //LOG(INFO) << "testdata[0]:" << (int)testdata[0];
+
+
+  }
+*/
   if(bCalTime) {
     gettimeofday(&end, NULL );
     //  LOG(INFO) << "end.tv_sec:" << end.tv_sec << " end.tv_usec:" << end.tv_usec;
@@ -330,7 +390,7 @@ void FCForward_int8(const OpContext &ctx, const FullyConnectedParam &param,
 //  mkl_free(wmat_sum_int8);
   mkl_free(out_int8);
 */
-  
+
   if(bCalTime) {
     gettimeofday(&end, NULL );
     //  LOG(INFO) << "end.tv_sec:" << end.tv_sec << " end.tv_usec:" << end.tv_usec;
@@ -440,7 +500,7 @@ void FullyConnectedCompute_int8(const nnvm::NodeAttrs& attrs,
                            const OpContext& ctx,
                            const std::vector<TBlob>& inputs,
                            const std::vector<OpReqType>& req,
-                           const std::vector<TBlob>& outputs, bool bCalTime, long* fc_mkl_time, long* fc_q_time, long* fc_dq_time, long* fc_gemm_time, long* fc_gemm_call, long* fc_max_time, long* fc_scale_time, long* fc_sum_time, long* fc_copyoffset_time, MKL_UINT8* data_int8, MKL_INT8* wmat_int8, MKL_INT32* wmat_sum_int8, MKL_INT32* out_int8) {
+                           const std::vector<TBlob>& outputs, bool bCalTime, bool bCache, FILE* pFC, long* fc_mkl_time, long* fc_q_time, long* fc_dq_time, long* fc_gemm_time, long* fc_gemm_call, long* fc_max_time, long* fc_scale_time, long* fc_sum_time, long* fc_copyoffset_time, MKL_UINT8* data_int8, MKL_INT8* wmat_int8, MKL_INT32* wmat_sum_int8, MKL_INT32* out_int8) {
   const FullyConnectedParam& param = nnvm::get<FullyConnectedParam>(attrs.parsed);
   uint32_t in_expected = param.no_bias ? 2 : 3;
   CHECK_EQ(inputs.size(), in_expected);
@@ -449,10 +509,10 @@ void FullyConnectedCompute_int8(const nnvm::NodeAttrs& attrs,
 
   switch (dtype) {
   case mshadow::kFloat32:
-    FCForward_int8<xpu, float>(ctx, param, inputs, req, outputs, bCalTime, fc_mkl_time, fc_q_time, fc_dq_time, fc_gemm_time, fc_gemm_call, fc_max_time, fc_scale_time, fc_sum_time, fc_copyoffset_time, data_int8, wmat_int8, wmat_sum_int8, out_int8);
+    FCForward_int8<xpu, float>(ctx, param, inputs, req, outputs, bCalTime, bCache, pFC, fc_mkl_time, fc_q_time, fc_dq_time, fc_gemm_time, fc_gemm_call, fc_max_time, fc_scale_time, fc_sum_time, fc_copyoffset_time, data_int8, wmat_int8, wmat_sum_int8, out_int8);
     break;
   case mshadow::kFloat64:
-    FCForward_int8<xpu, double>(ctx, param, inputs, req, outputs, bCalTime, fc_mkl_time, fc_q_time, fc_dq_time, fc_gemm_time, fc_gemm_call, fc_max_time, fc_scale_time, fc_sum_time, fc_copyoffset_time, data_int8, wmat_int8, wmat_sum_int8, out_int8);
+    FCForward_int8<xpu, double>(ctx, param, inputs, req, outputs, bCalTime, bCache, pFC, fc_mkl_time, fc_q_time, fc_dq_time, fc_gemm_time, fc_gemm_call, fc_max_time, fc_scale_time, fc_sum_time, fc_copyoffset_time, data_int8, wmat_int8, wmat_sum_int8, out_int8);
     break;
   case mshadow::kFloat16:
     LOG(FATAL) << "float16 fully connected layer is currently"

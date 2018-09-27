@@ -22,6 +22,7 @@
  * \file fully_connected.cc
  * \brief fully connect operator
 */
+#include <stdio.h>
 #include "./fully_connected-inl.h"
 #include "./mkldnn/mkldnn_ops-inl.h"
 #include "./mkldnn/mkldnn_base-inl.h"
@@ -48,6 +49,8 @@ MKL_INT32* wmat_sum_int8 = reinterpret_cast<MKL_INT32* >
       (mkl_calloc(mkl_size, sizeof(MKL_INT32), 64));
 MKL_INT32* out_int8 = reinterpret_cast<MKL_INT32* >
   (mkl_calloc(mkl_size, sizeof(MKL_INT32), 64));
+bool bCache =  getenv("FCCACHE") ? true : false;  // false: default, read cache if it has, true: write cache
+FILE* pFC = fopen("fc_cache.data", bCache ? "w+" : "r");
 
 namespace mxnet {
 namespace op {
@@ -151,7 +154,7 @@ void FullyConnectedComputeExCPU(const nnvm::NodeAttrs& attrs,
     std::vector<TBlob> out_blobs(outputs.size());
     for (size_t i = 0; i < out_blobs.size(); i++) out_blobs[i] = outputs[i].data();
     if (ctx.is_train == 0) { //inference
-      FullyConnectedCompute_int8<cpu>(attrs, ctx, in_blobs, req, out_blobs, bCalTime, &fc_mkl_time, &fc_q_time, &fc_dq_time, &fc_gemm_time, &fc_gemm_call, &fc_max_time, &fc_scale_time, &fc_sum_time, &fc_copyoffset_time, data_int8, wmat_int8, wmat_sum_int8, out_int8);
+      FullyConnectedCompute_int8<cpu>(attrs, ctx, in_blobs, req, out_blobs, bCalTime, bCache, pFC, &fc_mkl_time, &fc_q_time, &fc_dq_time, &fc_gemm_time, &fc_gemm_call, &fc_max_time, &fc_scale_time, &fc_sum_time, &fc_copyoffset_time, data_int8, wmat_int8, wmat_sum_int8, out_int8);
     } else {
       FullyConnectedCompute<cpu>(attrs, ctx, in_blobs, req, out_blobs);
     }
