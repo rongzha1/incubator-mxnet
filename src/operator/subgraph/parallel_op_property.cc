@@ -106,7 +106,15 @@ class SgParallelOpSelector : public SubgraphSelector {
       return std::vector<nnvm::Node *>(0);
     } else {
         //TODO:add condition function to decided whether to parallel
-    return candidates;
+    std::vector<nnvm::Node *> ret;
+    for (auto i : matched_list) {
+      auto non_const_i = const_cast<nnvm::Node *>(i);
+      if (std::find(candidates.begin(), candidates.end(), non_const_i) !=
+        candidates.end()) {
+      ret.push_back(non_const_i);
+      }
+    }
+    return ret;
     }
   }
 };
@@ -129,39 +137,26 @@ class SgParallelOpProperty : public SubgraphProperty {
     return std::make_shared<SgParallelOpProperty>();
   }
   nnvm::NodePtr CreateSubgraphNode(const nnvm::Symbol &sym,
-                                   const int subgraph_id = 0) const override {
-  LOG(INFO)<<"CreateSubgraphNode sym size " << sym.outputs.size();
-  //output node for parallel op
+                                           const SubgraphSelectorPtr& subgraph_selector,
+                                           const int subgraph_id = 0) const {
+    LOG(INFO)<<"CreateSubgraphNode sym size " << sym.outputs.size();
+    //output node for parallel op
     auto last_node = sym.outputs[0].node;
-#if 0     
-
-  std::string last_node_name = last_node->op()->name;
-  std::string parallel_op_name;
-  int parallel_op_num = 0;
-    DFSVisit(sym.outputs, [&](const nnvm::NodePtr &node) {
-    auto &op_name = node->attrs.name;
-    LOG(INFO)<<" CreateSubgraphNode sym outputs name "<<op_name;
-      if (node->is_variable()) return;
-    if(node->op()->name != last_node_name) {
-        parallel_op_name = node->op()->name;
-    parallel_op_num ++;
-    }
-    });
+    std::string op_name = last_node->op()->name;
+    int parallel_op_num = sym.outputs.size();
   
     nnvm::NodePtr n = nnvm::Node::Create();
-    std::ostringstream node_name;
-    node_name << "sg_parallel_";
-  node_name << parallel_op_name << std::to_string(subgraph_id);
-  
-    n->attrs.name = node_name.str();
+    n->attrs.name = "sg_parallel_" + op_name + std::to_string(subgraph_id);
     n->attrs.op = Op::Get("SgParallel_op");
-    CHECK(n->attrs.op);
+    CHECK(n->attrs.op); 
+    n->attrs.subgraphs.push_back(std::make_shared<nnvm::Symbol>(sym));
+  //    n->op()->attr_parser(&(n->attrs));
+#if 0
 //    n->attrs.subgraphs.emplace_back(std::make_shared<nnvm::Symbol>(new_sym));
-//    n->op()->attr_parser(&(n->attrs));
     uint32_t e_idx = 0;
     for (int i=0; i < last_node->inputs.size(); i++) {
         nnvm::NodeEntry& entry = last_node->inputs[i];
-        if (entry.node->op() && entry.node->op()->name == parallel_op_name) {
+        if (entry.node->op() && entry.node->op()->name == op_name) {
       LOG(INFO)<<"parallel embedding op inputs number  "<<n->inputs.size();
       for(int j = 0; j < entry.node->inputs.size(); j++) {
               nnvm::NodeEntry& parallel_op_Entry = entry.node->inputs[j];
@@ -172,8 +167,8 @@ class SgParallelOpProperty : public SubgraphProperty {
             ++e_idx;
         }
     }
-#endif        
-    return last_node;
+#endif
+    return n;
   }
 
   SubgraphSelectorPtr CreateSubgraphSelector() const override {
@@ -191,7 +186,8 @@ class SgParallelOpProperty : public SubgraphProperty {
     // Connect all extern output entries to output[0]
     for (size_t i = 0; i < output_entries->size(); ++i) {
     LOG(INFO)<<"output_entries size " <<output_entries->size();
-      *output_entries->at(i) = nnvm::NodeEntry{n, 0, 0};
+    LOG(INFO)<<"output_entries name " <<(*output_entries)[i]->node->attrs.name;
+      *output_entries->at(i) = nnvm::NodeEntry{n, i, 0};
     }
   }
 
@@ -199,6 +195,21 @@ class SgParallelOpProperty : public SubgraphProperty {
       const nnvm::NodePtr n, std::vector<nnvm::NodeEntry *> *input_entries,
       std::vector<nnvm::NodeEntry> *orig_input_entries) const override {
     LOG(INFO)<<"ConnectSubgraphInputs "<<n->op()->name;
+
+    for (int i = 0; i < input_entries->size(); i++) {
+    nnvm::NodeEntry *pEntry = (*input_entries)[i];
+    LOG(INFO) << "input_entries name " << pEntry->node->attrs.name;
+  }
+    for (int i = 0; i < orig_input_entries->size(); i++) {
+    nnvm::NodeEntry &origin_entry = (*orig_input_entries)[i];
+    LOG(INFO) << "origin_entry name " << origin_entry.node->attrs.name;
+  }
+  
+  for(auto entry : *orig_input_entries) {
+    n->inputs.emplace_back(entry);  
+  }
+
+#if 0
   
   std::string parallel_op_name;
     
@@ -210,6 +221,7 @@ class SgParallelOpProperty : public SubgraphProperty {
     }
     }
   }
+  
 
     std::ostringstream node_name;
     node_name << "sg_parallel_";
@@ -231,7 +243,6 @@ class SgParallelOpProperty : public SubgraphProperty {
           n->inputs[i] = (*orig_input_entries)[origin_idx++];
     }
     }
-#if 0
   for (int i = 0; i < n->inputs.size(); i++) {
     nnvm::NodePtr& n_input = n->inputs[i].node;
     LOG(INFO) << "inputs name " << n_input->attrs.name;
@@ -244,16 +255,8 @@ class SgParallelOpProperty : public SubgraphProperty {
       
   }
   }
-
-    for (int i = 0; i < input_entries->size(); i++) {
-      nnvm::NodeEntry *pEntry = (*input_entries)[i];
-      LOG(INFO) << "input_entries name " << pEntry->node->attrs.name;
-  }
-    for (int i = 0; i < orig_input_entries->size(); i++) {
-      nnvm::NodeEntry &origin_entry = (*orig_input_entries)[i];
-    LOG(INFO) << "origin_entry name " << origin_entry.node->attrs.name;
-  }
 #endif
+  
   }
 
  private:
