@@ -133,6 +133,8 @@ class SgParallelOpProperty : public SubgraphProperty {
   LOG(INFO)<<"CreateSubgraphNode sym size " << sym.outputs.size();
   //output node for parallel op
     auto last_node = sym.outputs[0].node;
+#if 0     
+
   std::string last_node_name = last_node->op()->name;
   std::string parallel_op_name;
   int parallel_op_num = 0;
@@ -160,11 +162,17 @@ class SgParallelOpProperty : public SubgraphProperty {
     for (int i=0; i < last_node->inputs.size(); i++) {
         nnvm::NodeEntry& entry = last_node->inputs[i];
         if (entry.node->op() && entry.node->op()->name == parallel_op_name) {
+      LOG(INFO)<<"parallel embedding op inputs number  "<<n->inputs.size();
+      for(int j = 0; j < entry.node->inputs.size(); j++) {
+              nnvm::NodeEntry& parallel_op_Entry = entry.node->inputs[j];
+        LOG(INFO)<<"add entry "<<parallel_op_Entry.node->attrs.name;
+        n->inputs.emplace_back(parallel_op_Entry);
+      }
             last_node->inputs[i] = nnvm::NodeEntry{ n, e_idx, 0};
             ++e_idx;
         }
     }
-      
+#endif        
     return last_node;
   }
 
@@ -179,31 +187,73 @@ class SgParallelOpProperty : public SubgraphProperty {
   void ConnectSubgraphOutputs(
       const nnvm::NodePtr n,
       std::vector<nnvm::NodeEntry *> *output_entries) const override {
+  LOG(INFO)<<"ConnectSubgraphOutputs " <<n->attrs.name;
     // Connect all extern output entries to output[0]
     for (size_t i = 0; i < output_entries->size(); ++i) {
+    LOG(INFO)<<"output_entries size " <<output_entries->size();
       *output_entries->at(i) = nnvm::NodeEntry{n, 0, 0};
     }
-    LOG(INFO)<<"ConnectSubgraphOutputs " <<n->attrs.name;
   }
 
   void ConnectSubgraphInputs(
       const nnvm::NodePtr n, std::vector<nnvm::NodeEntry *> *input_entries,
       std::vector<nnvm::NodeEntry> *orig_input_entries) const override {
-  LOG(INFO)<<"ConnectSubgraphInputs "<<n->op()->name;
+    LOG(INFO)<<"ConnectSubgraphInputs "<<n->op()->name;
+  
+  std::string parallel_op_name;
+    
+  for (auto entry : n->inputs) {    
+      if(entry.node->op()) {
+        std::string op_name = entry.node->op()->name;
+    if(op_name != n->op()->name) {
+      parallel_op_name = op_name;
+    }
+    }
+  }
 
+    std::ostringstream node_name;
+    node_name << "sg_parallel_";
+    node_name << parallel_op_name;
+    nnvm::NodePtr parallel_n = nnvm::Node::Create();
+    parallel_n->attrs.name = node_name.str();
+    parallel_n->attrs.op = Op::Get("SgParallel_op");
+
+    uint32_t e_idx = 0;
+  int origin_idx = 0;
+    for (int i=0; i < n->inputs.size(); i++) {
+      nnvm::NodeEntry& entry = n->inputs[i];
+        if (entry.node->op() && entry.node->op()->name == parallel_op_name) {
+          for(int j = 0; j < entry.node->inputs.size(); j++) {
+      parallel_n->inputs.emplace_back((*orig_input_entries)[origin_idx++]);
+      }
+      n->inputs[i] = nnvm::NodeEntry{ parallel_n, e_idx, 0};
+    } else {
+          n->inputs[i] = (*orig_input_entries)[origin_idx++];
+    }
+    }
+#if 0
   for (int i = 0; i < n->inputs.size(); i++) {
     nnvm::NodePtr& n_input = n->inputs[i].node;
     LOG(INFO) << "inputs name " << n_input->attrs.name;
+  if(n->inputs[i].node->op()) {
+    LOG(INFO)<<"   its op name is "<<n->inputs[i].node->op()->name;
+
+    for(auto input_node_entry : n->inputs[i].node->inputs) {
+      LOG(INFO)<<"      and its op entry name "<<input_node_entry.node->attrs.name;
+    }
+      
+  }
   }
 
     for (int i = 0; i < input_entries->size(); i++) {
-//      nnvm::NodeEntry *pEntry = (*input_entries)[i];
-//    LOG(INFO) << "input_entries name " << pEntry->node->attrs.name;
+      nnvm::NodeEntry *pEntry = (*input_entries)[i];
+      LOG(INFO) << "input_entries name " << pEntry->node->attrs.name;
   }
     for (int i = 0; i < orig_input_entries->size(); i++) {
       nnvm::NodeEntry &origin_entry = (*orig_input_entries)[i];
     LOG(INFO) << "origin_entry name " << origin_entry.node->attrs.name;
   }
+#endif
   }
 
  private:
@@ -214,4 +264,5 @@ MXNET_REGISTER_SUBGRAPH_PROPERTY(PARALLEL_OP, SgParallelOpProperty);
 
 }  // namespace op
 }  // namespace mxnet
+
 

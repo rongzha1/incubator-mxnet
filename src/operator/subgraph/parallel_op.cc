@@ -64,13 +64,33 @@ static void SgParallelOpParamParser(nnvm::NodeAttrs *attrs) {
 
 }
 
+inline uint32_t SgParallelOpNumOutputs(const nnvm::NodeAttrs& attrs) {
+/*
+  const nnvm::Symbol& sym = *attrs.subgraphs[0];
+  sym.ListOutputNames().size();
+  for(auto name : sym.ListOutputNames()) {
+    LOG(INFO)<<"name is "<< name;
+  }
+  */
+  return 26;
+}
+
+inline uint32_t SgParallelOpNumInputs(const nnvm::NodeAttrs& attrs) {
+  const nnvm::Symbol& sym = *attrs.subgraphs[0];
+  return sym.ListInputNames(nnvm::Symbol::kAll).size();
+}
+
 NNVM_REGISTER_OP(SgParallel_op)
 .describe(R"code(SgParallel_op)code" ADD_FILELINE)
-.set_num_inputs(DefaultSubgraphOpNumInputs)
-.set_num_outputs(DefaultSubgraphOpNumOutputs)
+.set_num_inputs(SgParallelOpNumInputs)
+//.set_num_inputs(DefaultSubgraphOpNumInputs)
+.set_num_outputs(SgParallelOpNumOutputs)
+//.set_num_outputs(DefaultSubgraphOpNumOutputs)
+//.set_num_outputs(26)
 .set_attr_parser(SgParallelOpParamParser)
 .set_attr<nnvm::FListInputNames>("FListInputNames", DefaultSubgraphOpListInputs)
 .set_attr<nnvm::FListOutputNames>("FListOutputNames", DefaultSubgraphOpListOutputs)
+//.set_attr<nnvm::FListOutputNames>("FListOutputNames", DefaultSubgraphOpListOutputs)
 // .set_attr<FCreateOpState>("FCreateOpState", CreateSgMKLDNNConvState)
 .set_attr<nnvm::FInferShape>("FInferShape", DefaultSubgraphOpShape)
 .set_attr<nnvm::FInferType>("FInferType", DefaultSubgraphOpType)
@@ -90,5 +110,6 @@ NNVM_REGISTER_OP(SgParallel_op)
 
 }  // namespace op
 }  // namespace mxnet
+
 
 
