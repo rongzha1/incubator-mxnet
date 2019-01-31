@@ -1,6 +1,5 @@
 #include "parallel_op-inl.h"
 
-
 namespace mxnet {
 namespace op {
 
@@ -49,7 +48,7 @@ void SgParallelOperator::Forward(const OpContext &ctx,
 
                    
 }
-
+/*
 static void SgParallelOpForward(const OpStatePtr &state_ptr,
                                   const OpContext &ctx,
                                   const std::vector<NDArray> &inputs,
@@ -58,10 +57,10 @@ static void SgParallelOpForward(const OpStatePtr &state_ptr,
   SgParallelOperator &op = state_ptr.get_state<SgParallelOperator>();
   op.Forward(ctx, inputs, req, outputs);
 }
+*/
+
 
 static void SgParallelOpParamParser(nnvm::NodeAttrs *attrs) {
-  ParallelOpParam param_;
-
 }
 
 NNVM_REGISTER_OP(SgParallel_op)
@@ -76,7 +75,8 @@ NNVM_REGISTER_OP(SgParallel_op)
 .set_attr<nnvm::FInferShape>("FInferShape", DefaultSubgraphOpShape)
 .set_attr<nnvm::FInferType>("FInferType", DefaultSubgraphOpType)
 .set_attr<FInferStorageType>("FInferStorageType", DefaultSubgraphOpStorageType)
-.set_attr<FStatefulComputeEx>("FStatefulComputeEx<cpu>", SgParallelOpForward)
+.set_attr<FComputeEx>("FComputeEx<cpu>", SgParallelOpForward<cpu>)
+//.set_attr<FStatefulComputeEx>("FStatefulComputeEx<cpu>", SgParallelOpForward)
 .set_attr<bool>("TIsMKLDNN", true)
 .set_attr<FResourceRequest>("FResourceRequest", [](const NodeAttrs& n) {
   return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
@@ -91,6 +91,4 @@ NNVM_REGISTER_OP(SgParallel_op)
 
 }  // namespace op
 }  // namespace mxnet
-
-
 

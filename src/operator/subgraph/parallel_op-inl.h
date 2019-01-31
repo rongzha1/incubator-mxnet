@@ -21,6 +21,7 @@
 #define MXNET_OPERATOR_SUBGRAPH_PARALLEL_OP_INL_H_
 
 #include "common.h"
+#include "../../tensor/indexing_op.h"
 
 
 namespace mxnet {
@@ -30,11 +31,37 @@ struct ParallelOpParam {
   int parallel_input_size;
 };
 
+template<typename xpu>
+void SgParallelOpForward(const nnvm::NodeAttrs& attrs,
+             const OpContext& ctx,
+             const std::vector<NDArray>& inputs,
+             const std::vector<OpReqType>& req,
+             const std::vector<NDArray>& outputs) {
+  const nnvm::Symbol& sym = *attrs.subgraphs[0];
+  std::unordered_set<std::string> output_node_name;
+  for(auto entry : sym.outputs) {
+    if(entry.node->op()) {
+    output_node_name.insert(entry.node->attrs.name);
+    }
+  }
+
+  int parallel_op_size = output_node_name.size();
+  int input_size = sym.ListInputNames(nnvm::Symbol::kAll).size()/parallel_op_size;
+  int output_size = sym.ListOutputNames().size()/parallel_op_size;
+
+  int omp_threads = engine::OpenMP::Get()->GetRecommendedOMPThreadCount();
+  #pragma omp parallel for num_threads(omp_threads)
+  for(int i = 0; i < parallel_op_size; i++) {
+    const std::vector<NDArray>each_input(inputs.begin()+i*input_size,inputs.begin()+(i+1)*input_size);
+    const std::vector<NDArray>each_output(outputs.begin()+i*output_size,outputs.begin()+(i+1)*output_size);
+    SparseEmbeddingOpForwardEx<xpu>(attrs,ctx,each_input,req,each_output);
+  }
+}
+
 // enum MKLDNNConvOpOutputs { kOut, kMin, kMax };
 
 }  // namespace op
 }  // namespace mxnet
 
 #endif  // MXNET_OPERATOR_SUBGRAPH_MKLDNN_MKLDNN_CONV_INL_H_
-
 
