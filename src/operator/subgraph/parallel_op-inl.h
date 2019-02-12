@@ -39,9 +39,12 @@ void SgParallelOpForward(const nnvm::NodeAttrs& attrs,
              const std::vector<NDArray>& outputs) {
   const nnvm::Symbol& sym = *attrs.subgraphs[0];
   std::unordered_set<std::string> output_node_name;
+  std::vector<FComputeEx> ForwardFuns;
   for(auto entry : sym.outputs) {
     if(entry.node->op()) {
     output_node_name.insert(entry.node->attrs.name);
+    //static auto& fcompute_cpu = nnvm::Op::GetAttr<FCompType>(name + "<cpu>");
+      ForwardFuns.emplace_back(nnvm::Op::GetAttr<FComputeEx>("FComputeEx<cpu>").get(entry.node->op(), nullptr));
     }
   }
 
@@ -54,7 +57,7 @@ void SgParallelOpForward(const nnvm::NodeAttrs& attrs,
   for(int i = 0; i < parallel_op_size; i++) {
     const std::vector<NDArray>each_input(inputs.begin()+i*input_size,inputs.begin()+(i+1)*input_size);
     const std::vector<NDArray>each_output(outputs.begin()+i*output_size,outputs.begin()+(i+1)*output_size);
-    SparseEmbeddingOpForwardEx<xpu>(attrs,ctx,each_input,req,each_output);
+    ForwardFuns[i](attrs,ctx,each_input,req,each_output);
   }
 }
 
