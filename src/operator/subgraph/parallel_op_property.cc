@@ -102,7 +102,7 @@ class SgParallelOpSelector : public SubgraphSelector {
       
   LOG(INFO) << "Filter candidates size "<<candidates.size() ;
   
-    if (status != kEnd) {
+    if ((status != kEnd && status != kSelect) || (candidates.size() < 2)) {
       return std::vector<nnvm::Node *>(0);
     } else {
         //TODO:add condition function to decided whether to parallel
