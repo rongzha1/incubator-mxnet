@@ -780,7 +780,7 @@ class NDArray {
    /*!
    * \ Fix mkldnn memory descriptor mismatch from NDArray.
    */
-  void UpdateMKLDNNMemDesc(mkldnn::memory::format format);
+  void UpdateMKLDNNMemDesc(mkldnn::memory::format_tag format_tag);
 #endif
 
   /*!

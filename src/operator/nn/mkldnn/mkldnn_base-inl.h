@@ -79,7 +79,7 @@ class CpuEngine {
   mkldnn::engine &get_engine() { return _cpu_engine; }
 
  protected:
-  CpuEngine() : _cpu_engine(mkldnn::engine::cpu, 0) {}
+  CpuEngine() : _cpu_engine(mkldnn::engine::kind::cpu, 0) {}
   ~CpuEngine() {}
 
  private:
@@ -472,10 +472,10 @@ const mkldnn::memory *GetWeights(const NDArray &arr,
                                  const mkldnn::memory::desc &target_desc,
                                  int num_groups);
 
-mkldnn_memory_format_t GetDefaultFormat(const mkldnn::memory::desc &desc);
-mkldnn_memory_format_t GetDefaultFormat(int num_dims);
-mkldnn::memory::desc GetDesc(mkldnn::memory::desc pd,
-                                                mkldnn_memory_format_t format);
+mkldnn_format_tag_t GetDefaultFormat(const mkldnn::memory::desc &desc);
+mkldnn_format_tag_t GetDefaultFormat(int num_dims);
+mkldnn::memory::desc GetDesc(mkldnn::memory::desc desc,
+                                                mkldnn_format_tag_t format);
 
 inline bool same_shape(const mxnet::TShape &shape, const mkldnn_dims_t dims, int ndims) {
   if (shape.ndim() != ndims)
@@ -549,18 +549,18 @@ class MKLDNNMemory {
   LOG(FATAL)<<"mkldnnv1.0 GetDesc";
   }
 
-  mkldnn::memory::desc GetDesc(mkldnn_memory_format_t format) const {
+  mkldnn::memory::desc GetDesc(mkldnn_format_tag_t format) const {
  #if 0  
     return mxnet::GetPrimitiveDesc(mem->get_primitive_desc(), format);
  #endif 
    LOG(FATAL)<<"mkldnnv1.0 GetDesc";
   }
 
-  mkldnn_memory_format_t GetDefaultFormat() const {
+  mkldnn_format_tag_t GetDefaultFormat() const {
     return mxnet::GetDefaultFormat(desc);
   }
 
-  mkldnn_memory_format_t GetFormat() const {
+  mkldnn_format_tag_t GetFormat() const {
 #if 0  
     return desc.data.format;
 #endif 

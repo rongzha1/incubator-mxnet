@@ -769,7 +769,7 @@ mkldnn::memory *NDArray::CreateMKLDNNData(const mkldnn::memory::desc &desc) {
                           LOG(FATAL)<<"mkldnnv1.0 CreateMKLDNNData";
 }
 
-void NDArray::UpdateMKLDNNMemDesc(mkldnn::memory::format format) {
+void NDArray::UpdateMKLDNNMemDesc(mkldnn::memory::format_tag format) {
 #if 0
   const mkldnn::memory *mem = GetMKLDNNData();
   auto mem_desc = mem->get_primitive_desc().desc();

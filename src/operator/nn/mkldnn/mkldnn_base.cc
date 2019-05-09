@@ -303,7 +303,7 @@ const mkldnn::memory *GetWeights(const NDArray &arr,
             LOG(FATAL)<<"mkldnnv1.0 GetWeights";
 }
 
-mkldnn_memory_format_t GetDefaultFormat(int num_dims) {
+mkldnn_format_tag_t GetDefaultFormat(int num_dims) {
 #if 0                
   switch (num_dims) {
     case 1: return mkldnn_x;
@@ -319,7 +319,7 @@ mkldnn_memory_format_t GetDefaultFormat(int num_dims) {
   LOG(FATAL)<<"mkldnnv1.0 GetDefaultFormat";
 }
 
-mkldnn_memory_format_t GetDefaultFormat(const mkldnn::memory::desc &desc) {
+mkldnn_format_tag_t GetDefaultFormat(const mkldnn::memory::desc &desc) {
 #if 0                
   if (desc.data.ndims == 1) {
     return desc.data.format;
@@ -435,7 +435,7 @@ mkldnn_memory_format_t GetDefaultFormat(const mkldnn::memory::desc &desc) {
 }
 
 mkldnn::memory::desc GetDesc(mkldnn::memory::desc desc,
-                                                mkldnn_memory_format_t format) {
+                                                mkldnn_format_tag_t format) {
 #if 0
   mkldnn::memory::dims dims(pd.desc().data.ndims);
   for (size_t i = 0; i < dims.size(); i++)
