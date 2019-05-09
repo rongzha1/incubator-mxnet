@@ -92,27 +92,22 @@ struct data_type_enum {};
 
 template <>
 struct data_type_enum<float> {
-  enum { type = mkldnn::memory::data_type::f32 };
+  enum class{ type = mkldnn::memory::data_type::f32 };
 };
 
 template <>
 struct data_type_enum<int32_t> {
-  enum { type = mkldnn::memory::data_type::s32 };
-};
-
-template <>
-struct data_type_enum<int16_t> {
-  enum { type = mkldnn::memory::data_type::s16 };
+  enum class{ type = mkldnn::memory::data_type::s32 };
 };
 
 template <>
 struct data_type_enum<int8_t> {
-  enum { type = mkldnn::memory::data_type::s8 };
+  enum class{ type = mkldnn::memory::data_type::s8 };
 };
 
 template <>
 struct data_type_enum<uint8_t> {
-  enum { type = mkldnn::memory::data_type::u8 };
+  enum class{ type = mkldnn::memory::data_type::u8 };
 };
 
 static inline bool SupportMKLDNNArray(int dtype, const mxnet::TShape &shape) {
@@ -212,7 +207,7 @@ static inline mkldnn::memory::data_type get_mkldnn_type(int dtype) {
       return mkldnn::memory::data_type::u8;
     default:
       LOG(FATAL) << "unknown type for MKLDNN";
-      return mkldnn::memory::data_type::data_undef;
+      return mkldnn::memory::data_type::undef;
   }
 }
 

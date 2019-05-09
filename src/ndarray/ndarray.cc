@@ -707,7 +707,7 @@ void NDArray::CopyFrom(const mkldnn::memory &mem) {
   if (ptr_->mkl_mem_ && ptr_->mkl_mem_->GetRaw() == &mem)
     return;
 
-  CHECK(mem.get_primitive_desc().get_size() == shape().Size() * GetTypeSize(dtype_))
+  CHECK(mem.get_desc().get_size() == shape().Size() * GetTypeSize(dtype_))
       << "The size of NDArray doesn't match the requested MKLDNN memory desc";
   // If this array uses MKLDNN layout, we have to make sure it's not a view.
   // Otherwise, we'll have to change the layout inside the array.
@@ -1147,6 +1147,7 @@ inline void CopyFromToDnsImpl(const NDArray& from, const NDArray& to, RunContext
              && SupportMKLDNN(to.dtype(), to.shape())
              && from.ctx().dev_mask() == cpu::kDevMask
              && to.ctx().dev_mask() == cpu::kDevMask) {
+#if 0             
     // If we copy data directly, we need to make sure both NDArrays are supported
     // by MKLDNN.
     auto from_mem = from.GetMKLDNNData();
@@ -1159,6 +1160,9 @@ inline void CopyFromToDnsImpl(const NDArray& from, const NDArray& to, RunContext
       const_cast<NDArray &>(to).CopyFrom(*from_mem);
       MKLDNNStream::Get()->Submit();
     }
+#endif
+          // TODO: pd include formart, need check desc + format ? 
+          LOG(FATAL)<<"mkldnnv1.0 CopyFromToDnsImpl ";
   } else {
     // In this case, one of the NDArray isn't supported by MKLDNN, we need
     // to convert the MKLDNN array to the default format first and copy data
