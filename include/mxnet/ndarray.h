@@ -700,7 +700,7 @@ class NDArray {
    * Create NDArray from mkldnn memory descriptor.
    * mem_pd The mkldnn memory descriptor to be created.
    */
-  explicit NDArray(mkldnn::memory::primitive_desc mem_pd);
+  explicit NDArray(mkldnn::memory::desc mem_desc);
   /*
    * Test if the data is stored in one of special MKLDNN format.
    */
@@ -729,14 +729,14 @@ class NDArray {
    * as long as the array size meets the required size in the given primitive_desc.
    */
   const mkldnn::memory *GetMKLDNNData(
-      const mkldnn::memory::primitive_desc &desc) const;
+      const mkldnn::memory::desc &desc) const;
   /*
    * This function returns mkldnn::memory with the given primitive_desc.
    * The returned mkldnn::memory will have the same physical layout as
    * the given primitive_desc.
    */
   const mkldnn::memory *GetMKLDNNDataReorder(
-      const mkldnn::memory::primitive_desc &desc) const;
+      const mkldnn::memory::desc &desc) const;
 
   /*
    * This function copies data from mkldnn memory.
@@ -747,7 +747,7 @@ class NDArray {
    * with the specified format.
    */
   mkldnn::memory *CreateMKLDNNData(
-      const mkldnn::memory::primitive_desc &desc);
+      const mkldnn::memory::desc &desc);
 
   /*
    * These are the async version of the methods above.
@@ -755,7 +755,7 @@ class NDArray {
    * the array are complete.
    */
   void Reorder2DefaultAsync();
-  void MKLDNNDataReorderAsync(const mkldnn::memory::primitive_desc &desc);
+  void MKLDNNDataReorderAsync(const mkldnn::memory::desc &desc);
 
   /*
    * This creates a new NDArray with the reordered data.
@@ -1045,7 +1045,7 @@ class NDArray {
     // save the result in shandle.
     void Reorder2Default();
     // Reroder data to a specified layout.
-    void MKLDNNDataReorder(const mkldnn::memory::primitive_desc &desc);
+    void MKLDNNDataReorder(const mkldnn::memory::desc &desc);
     bool IsMKLDNN() const;
     bool IsDefault() const;
 #endif
@@ -1477,3 +1477,4 @@ namespace dmlc {
 DMLC_DECLARE_TRAITS(has_saveload, mxnet::NDArray, true);
 }  // namespace dmlc
 #endif  // MXNET_NDARRAY_H_
+

@@ -55,6 +55,7 @@ void *AlignMem(void *mem, size_t size, size_t alignment, size_t *space) {
 }
 
 mkldnn::memory *TmpMemMgr::Alloc(const mkldnn::memory::primitive_desc &pd) {
+#if 0
   // We need to include the size of the memory used for alignment.
   this->est_size += pd.get_size() + alignment;
   void *mem = AlignMem(this->curr_mem, pd.get_size(), alignment, &this->curr_size);
@@ -78,11 +79,13 @@ mkldnn::memory *TmpMemMgr::Alloc(const mkldnn::memory::primitive_desc &pd) {
     MKLDNNStream::Get()->RegisterMem(ret);
     return ret.get();
   }
+#endif
+  LOG(FATAL)<<"mkldnnv1.0 Alloc";
 }
 
 void MKLDNNCopy(const mkldnn::memory &mem, const mkldnn::memory* this_mem) {
   MKLDNNStream *stream = MKLDNNStream::Get();
-
+#if 0
   mkldnn::memory::primitive_desc from_pd = mem.get_primitive_desc();
   mkldnn::memory::desc from_desc = from_pd.desc();
   mkldnn::memory::primitive_desc this_pd = this_mem->get_primitive_desc();
@@ -147,22 +150,28 @@ void MKLDNNCopy(const mkldnn::memory &mem, const mkldnn::memory* this_mem) {
       stream->RegisterPrim(mkldnn::reorder(*tmp_mem, *this_mem));
     }
   }
+  #endif
+  LOG(FATAL)<<"mkldnnv1.0 MKLDNNCopy";
 }
 
 bool CanWriteTo(const NDArray &out_arr,
                 const NDArray &in_arr,
                 const mkldnn::memory::primitive_desc &desc) {
+#if 0                
   auto in_mem = in_arr.GetMKLDNNData();
   bool add_same = in_mem->get_data_handle() == out_arr.GetMKLDNNData()->get_data_handle();
   bool pdesc_same = out_arr.GetMKLDNNData()->get_primitive_desc() == desc &&
       in_mem->get_primitive_desc() == desc;
   return add_same && pdesc_same;
+#endif
+  LOG(FATAL)<<"mkldnnv1.0 CanWriteTo";
 }
 
 mkldnn_output_t CreateMKLDNNMem(const NDArray &out_arr,
                                 const mkldnn::memory::primitive_desc &desc,
                                 OpReqType req,
                                 const NDArray* in_arr) {
+#if 0                
   if (kAddTo == req) {
     auto tmp = TmpMemMgr::Get()->Alloc(desc);
     return mkldnn_output_t(OutDataOp::AddBack, tmp);
@@ -185,11 +194,14 @@ mkldnn_output_t CreateMKLDNNMem(const NDArray &out_arr,
   }
   auto tmp = TmpMemMgr::Get()->Alloc(desc);
   return mkldnn_output_t(OutDataOp::Noop, tmp);
+#endif
+    LOG(FATAL)<<"mkldnnv1.0 CreateMKLDNNMem";
 }
 
 mkldnn_output_t CreateMKLDNNWeightGrad(const NDArray &out_arr,
                                        const mkldnn::memory::primitive_desc &desc,
                                        OpReqType req) {
+#if 0                
   if (kAddTo == req) {
     auto tmp = TmpMemMgr::Get()->Alloc(desc);
     return mkldnn_output_t(OutDataOp::AddBack, tmp);
@@ -210,9 +222,12 @@ mkldnn_output_t CreateMKLDNNWeightGrad(const NDArray &out_arr,
       return mkldnn_output_t(OutDataOp::Noop, mem);
     }
   }
+#endif
+      LOG(FATAL)<<"mkldnnv1.0 CreateMKLDNNWeightGrad";
 }
 
 void CommitOutput(const NDArray &arr, const mkldnn_output_t &res) {
+#if 0                
   if (res.first == CopyBack) {
     const_cast<NDArray &>(arr).CopyFrom(*res.second);
   } else if (res.first == AddBack) {
@@ -227,9 +242,13 @@ void CommitOutput(const NDArray &arr, const mkldnn_output_t &res) {
     }
     op::MKLDNNSum(*mem, *res_memory, *mem);
   }
+#endif
+        LOG(FATAL)<<"mkldnnv1.0 CreateMKLDNNWeightGrad";
+  
 }
 
 const mkldnn::memory *GetWeights(const NDArray &arr, int num_groups) {
+#if 0                
   const auto type = get_mkldnn_type(arr.dtype());
   auto tz = mkldnn::memory::dims{0};
   auto format = mkldnn::memory::format::format_undef;
@@ -263,10 +282,13 @@ const mkldnn::memory *GetWeights(const NDArray &arr, int num_groups) {
   const auto md = mkldnn::memory::desc{tz, type, format};
   const auto pd = mkldnn::memory::primitive_desc{md, engine};
   return arr.GetMKLDNNData(pd);
+#endif
+          LOG(FATAL)<<"mkldnnv1.0 GetWeights";
 }
 
 const mkldnn::memory *GetWeights(const NDArray &arr,
                                  const mkldnn::memory::primitive_desc &target_pd, int num_groups) {
+#if 0                
   const mkldnn::memory *mem = arr.GetMKLDNNData(target_pd);
   // If the weight array already uses the target layout, simply return it directly.
   if (mem) return mem;
@@ -277,9 +299,12 @@ const mkldnn::memory *GetWeights(const NDArray &arr,
   auto ret = TmpMemMgr::Get()->Alloc(target_pd);
   MKLDNNStream::Get()->RegisterPrim(mkldnn::reorder(*mem, *ret));
   return ret;
+#endif
+            LOG(FATAL)<<"mkldnnv1.0 GetWeights";
 }
 
 mkldnn_memory_format_t GetDefaultFormat(int num_dims) {
+#if 0                
   switch (num_dims) {
     case 1: return mkldnn_x;
     case 2: return mkldnn_nc;
@@ -290,9 +315,12 @@ mkldnn_memory_format_t GetDefaultFormat(int num_dims) {
       LOG(FATAL) << "Unsupported MKLDNN dimensions: " << num_dims;
       return mkldnn_format_undef;
   }
+#endif
+  LOG(FATAL)<<"mkldnnv1.0 GetDefaultFormat";
 }
 
 mkldnn_memory_format_t GetDefaultFormat(const mkldnn::memory::desc &desc) {
+#if 0                
   if (desc.data.ndims == 1) {
     return desc.data.format;
   } else if (desc.data.ndims == 2) {
@@ -402,10 +430,13 @@ mkldnn_memory_format_t GetDefaultFormat(const mkldnn::memory::desc &desc) {
     LOG(FATAL) << "Unsupported dimensions: " << desc.data.ndims;
     return mkldnn_format_undef;
   }
+#endif
+    LOG(FATAL)<<"mkldnnv1.0 GetDefaultFormat";
 }
 
 mkldnn::memory::primitive_desc GetPrimitiveDesc(mkldnn::memory::primitive_desc pd,
                                                 mkldnn_memory_format_t format) {
+#if 0
   mkldnn::memory::dims dims(pd.desc().data.ndims);
   for (size_t i = 0; i < dims.size(); i++)
     dims[i] = pd.desc().data.dims[i];
@@ -414,6 +445,8 @@ mkldnn::memory::primitive_desc GetPrimitiveDesc(mkldnn::memory::primitive_desc p
       pd.desc().data.data_type);
   mkldnn::memory::desc data_md(dims, cpp_type, cpp_format);
   return mkldnn::memory::primitive_desc(data_md, pd.get_engine());
+#endif
+    LOG(FATAL)<<"mkldnnv1.0 GetPrimitiveDesc";
 }
 
 void FallBackCompute(FCompute fn, const nnvm::NodeAttrs &attrs,
@@ -421,6 +454,7 @@ void FallBackCompute(FCompute fn, const nnvm::NodeAttrs &attrs,
                      const std::vector<NDArray> &inputs,
                      const std::vector<OpReqType> &req,
                      const std::vector<NDArray> &outputs) {
+#if 0
   std::vector<TBlob> in_blobs(inputs.size());
   std::vector<NDArray> in_bufs;
   for (size_t i = 0; i < in_blobs.size(); i++) {
@@ -462,6 +496,8 @@ void FallBackCompute(FCompute fn, const nnvm::NodeAttrs &attrs,
     if (req[i] == kAddTo && outputs[i].IsMKLDNNData())
       mxnet::common::CastNonDefaultStorage(temp_src, temp_dst, ctx, false);
   }
+#endif
+      LOG(FATAL)<<"mkldnnv1.0 FallBackCompute";
 }
 
 template<typename DType>
@@ -476,6 +512,7 @@ void print_diff(const mxnet::NDArray &arr1, const mxnet::NDArray &arr2) {
 template<typename DType>
 static bool SimilarArray(const mxnet::NDArray &arr1, const mxnet::NDArray &arr2,
                          DType rtol, DType atol) {
+#if 0
   if (arr1.shape().Size() != arr2.shape().Size())
     return false;
 
@@ -512,10 +549,13 @@ static bool SimilarArray(const mxnet::NDArray &arr1, const mxnet::NDArray &arr2,
       success.store(false);
   }
   return success.load();
+#endif
+        LOG(FATAL)<<"mkldnnv1.0 SimilarArray";
 }
 
 void OpCheck::Init(const std::vector<mxnet::NDArray> &inputs_,
                    const std::vector<mxnet::NDArray> &outputs_) {
+#if 0                   
   auto ctx = inputs_[0].ctx();
   CHECK(!MKLDNNStream::Get()->HasOps());
   for (size_t i = 0; i < inputs_.size(); i++) {
@@ -535,6 +575,8 @@ void OpCheck::Init(const std::vector<mxnet::NDArray> &inputs_,
     }
   }
   MKLDNNStream::Get()->Submit();
+#endif
+          LOG(FATAL)<<"mkldnnv1.0 Init";
 }
 
 void OpCheck::Run(mxnet::FCompute fn, const nnvm::NodeAttrs &attrs,
@@ -573,6 +615,7 @@ void OpCheck::Run(mxnet::FCompute fn, const nnvm::NodeAttrs &attrs,
 
 void OpCheck::CopyResult(const std::vector<mxnet::NDArray> &outputs_,
                          const std::vector<size_t> &indice) {
+#if 0
   CHECK(!MKLDNNStream::Get()->HasOps());
   auto non_const_outputs_ = const_cast<std::vector<mxnet::NDArray> &>(outputs_);
   for (auto i = indice.begin(); i != indice.end(); ++i) {
@@ -580,6 +623,8 @@ void OpCheck::CopyResult(const std::vector<mxnet::NDArray> &outputs_,
     non_const_outputs_[*i].CopyFrom(*mem);
   }
   MKLDNNStream::Get()->Submit();
+#endif
+            LOG(FATAL)<<"mkldnnv1.0 CopyResult";
 }
 
 bool MKLDNNStorageType(const nnvm::NodeAttrs &attrs,
@@ -592,13 +637,11 @@ bool MKLDNNStorageType(const nnvm::NodeAttrs &attrs,
     if (v == - 1) v = kDefaultStorage;
 
   DispatchMode wanted_mode;
-#if MXNET_USE_MKLDNN == 1
   if (dev_mask == mshadow::cpu::kDevMask && !MKLDNNEnvSet())
     wanted_mode = DispatchMode::kFComputeFallback;
   else if (dev_mask == mshadow::cpu::kDevMask && support_mkldnn)
     wanted_mode = DispatchMode::kFComputeEx;
   else
-#endif
     wanted_mode = DispatchMode::kFCompute;
 
   bool dispatched = false;
@@ -615,3 +658,4 @@ bool MKLDNNStorageType(const nnvm::NodeAttrs &attrs,
 }  // namespace mxnet
 
 #endif
+

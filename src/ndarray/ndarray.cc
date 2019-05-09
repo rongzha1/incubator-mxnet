@@ -172,16 +172,20 @@ nnvm::Symbol NDArray::get_autograd_symbol() const {
 
 NDArray::NDArray(mkldnn::memory::primitive_desc mem_pd)
     : storage_type_(kDefaultStorage), entry_({nullptr, 0, 0}) {
+#if 0    
   auto mem_desc = mem_pd.desc();
   shape_ = mxnet::TShape(mem_desc.data.dims, mem_desc.data.dims + mem_desc.data.ndims);
   dtype_ = get_mxnet_type(mem_desc.data.data_type);
   ptr_ = std::make_shared<Chunk>(shape_, Context::CPU(), true, dtype_);
   ptr_->CheckAndAlloc(mem_pd.get_size());
   ptr_->mkl_mem_ = std::make_shared<MKLDNNMemory>(mem_pd, ptr_->shandle.dptr);
+#endif
+  LOG(FATAL)<<"mkldnnv1.0 NDArray";
 }
 
 NDArray::NDArray(const std::shared_ptr<mkldnn::memory> &mkldnn_mem)
     : storage_type_(kDefaultStorage), entry_({nullptr, 0, 0}) {
+#if 0    
   auto mem_pd = mkldnn_mem->get_primitive_desc();
   auto mem_desc = mem_pd.desc();
   shape_ = mxnet::TShape(mem_desc.data.dims, mem_desc.data.dims + mem_desc.data.ndims);
@@ -192,9 +196,12 @@ NDArray::NDArray(const std::shared_ptr<mkldnn::memory> &mkldnn_mem)
   ptr_->delay_alloc = false;
   ptr_->mkl_mem_ = std::make_shared<MKLDNNMemory>(mkldnn_mem);
   ptr_->static_data = true;
+#endif
+    LOG(FATAL)<<"mkldnnv1.0 NDArray";
 }
 
 NDArray NDArray::MKLDNNDataReshape(const mxnet::TShape &shape) const {
+#if 0    
   CHECK(!is_none()) << "NDArray is not initialized";
   CHECK_GE(shape_.Size(), shape.Size())
     << "NDArray.Reshape: target shape size is larger current shape";
@@ -229,6 +236,8 @@ NDArray NDArray::MKLDNNDataReshape(const mxnet::TShape &shape) const {
     ret.reuse_ = false;
     return ret;
   }
+#endif
+      LOG(FATAL)<<"mkldnnv1.0 MKLDNNDataReshape";
 }
 
 #endif
@@ -382,14 +391,18 @@ void NDArray::set_fresh_out_grad(bool state) const {
 #if MXNET_USE_MKLDNN == 1
 
 bool NDArray::Chunk::IsMKLDNN() const {
+#if 0
   if (storage_type != kDefaultStorage)
     return false;
   if (mkl_mem_ == nullptr)
     return false;
   return mkl_mem_->IsMKLDNN();
+#endif
+  LOG(FATAL)<<"mkldnnv1.0 IsMKLDNN";
 }
 
 bool NDArray::Chunk::IsDefault() const {
+#if 0
   if (storage_type != kDefaultStorage)
     return false;
   // If we don't have mkldnn memory yet, we just assume it's not the default
@@ -397,9 +410,12 @@ bool NDArray::Chunk::IsDefault() const {
   if (mkl_mem_ == nullptr)
     return true;
   return !mkl_mem_->IsMKLDNN();
+#endif
+    LOG(FATAL)<<"mkldnnv1.0 IsDefault";
 }
 
 void NDArray::Chunk::Reorder2Default() {
+#if 0
   if (mkl_mem_ == nullptr)
     return;
 
@@ -416,9 +432,12 @@ void NDArray::Chunk::Reorder2Default() {
   // TODO(zhengda) We need to avoid memory copy here.
   memcpy(shandle.dptr, def_mem->get_data_handle(), def_pd.get_size());
   mkl_mem_ = nullptr;
+#endif
+    LOG(FATAL)<<"mkldnnv1.0 Reorder2Default";
 }
 
 void NDArray::Chunk::MKLDNNDataReorder(const mkldnn::memory::primitive_desc &pd) {
+#if 0
   // If the memory already uses the specified layout, don't do anything.
   if (mkl_mem_ != nullptr && mkl_mem_->SameFormat(pd))
     return;
@@ -454,9 +473,12 @@ void NDArray::Chunk::MKLDNNDataReorder(const mkldnn::memory::primitive_desc &pd)
   // TODO(zhengda) We need to avoid memory copy here.
   memcpy(shandle.dptr, new_mem->get_data_handle(), pd.get_size());
   mkl_mem_.reset(new MKLDNNMemory(pd, shandle.dptr));
+#endif
+      LOG(FATAL)<<"mkldnnv1.0 MKLDNNDataReorder";
 }
 
 void NDArray::Chunk::SetMKLMem(const mxnet::TShape &shape, int dtype) {
+#if 0
   // The shape of the array and the one of the MKL memory may mismatch.
   // For example, if the array stores parameters, the MKL memory may store data
   // in 5 dimensions while the NDArray stores data in 4 dimensions.
@@ -494,10 +516,13 @@ void NDArray::Chunk::SetMKLMem(const mxnet::TShape &shape, int dtype) {
   mkldnn::memory::primitive_desc pd(data_md, cpu_engine);
   CHECK(shandle.size >= pd.get_size());
   mkl_mem_.reset(new MKLDNNMemory(pd, shandle.dptr));
+#endif
+        LOG(FATAL)<<"mkldnnv1.0 SetMKLMem";
 }
 
 const mkldnn::memory *NDArray::GetMKLDNNData(
     const mkldnn::memory::primitive_desc &desc) const {
+#if 0
   if (desc.get_size() != shape().Size() * GetTypeSize(dtype_)) {
     LOG(FATAL) << "The size of NDArray doesn't match the requested MKLDNN memory desc";
     return nullptr;
@@ -515,10 +540,13 @@ const mkldnn::memory *NDArray::GetMKLDNNData(
   } else {
     return nullptr;
   }
+#endif
+          LOG(FATAL)<<"mkldnnv1.0 GetMKLDNNData";
 }
 
 const mkldnn::memory *NDArray::GetMKLDNNDataReorder(
     const mkldnn::memory::primitive_desc &new_pd) const {
+#if 0
   if (new_pd.get_size() != shape().Size() * GetTypeSize(dtype_)) {
     LOG(FATAL) << "The size of NDArray doesn't match the requested MKLDNN memory desc";
     return nullptr;
@@ -564,9 +592,12 @@ const mkldnn::memory *NDArray::GetMKLDNNDataReorder(
       return ret2;
     }
   }
+#endif
+            LOG(FATAL)<<"mkldnnv1.0 GetMKLDNNDataReorder";
 }
 
 NDArray NDArray::Reorder2Default() const {
+#if 0
   CHECK(storage_type() == kDefaultStorage);
 
   if (ptr_->mkl_mem_ == nullptr)
@@ -589,9 +620,12 @@ NDArray NDArray::Reorder2Default() const {
   ret.byte_offset_ = byte_offset_;
   ret.reuse_ = false;
   return ret;
+#endif
+              LOG(FATAL)<<"mkldnnv1.0 Reorder2Default";
 }
 
 void NDArray::Reorder2DefaultAsync() {
+#if 0
   std::vector<Engine::VarHandle> const_vars;
   std::vector<Engine::VarHandle> mutable_vars(1, this->var());
   NDArray tmp = *this;
@@ -601,9 +635,12 @@ void NDArray::Reorder2DefaultAsync() {
       on_complete();
     }, ctx(), const_vars, mutable_vars,
     FnProperty::kNormal, 0, "Reorder2Default");
+#endif
+                  LOG(FATAL)<<"mkldnnv1.0 Reorder2DefaultAsync";
 }
 
 void NDArray::MKLDNNDataReorderAsync(const mkldnn::memory::primitive_desc &desc) {
+#if 0
   std::vector<Engine::VarHandle> const_vars;
   std::vector<Engine::VarHandle> mutable_vars(1, this->var());
   NDArray tmp = *this;
@@ -613,9 +650,12 @@ void NDArray::MKLDNNDataReorderAsync(const mkldnn::memory::primitive_desc &desc)
       on_complete();
     }, ctx(), const_vars, mutable_vars,
     FnProperty::kNormal, 0, "Reorder");
+#endif
+                      LOG(FATAL)<<"mkldnnv1.0 MKLDNNDataReorderAsync";
 }
 
 const mkldnn::memory *NDArray::GetMKLDNNData() const {
+#if 0    
   CHECK(storage_type() == kDefaultStorage);
   bool is_view = IsView();
   if (IsMKLDNNData()) {
@@ -652,6 +692,8 @@ const mkldnn::memory *NDArray::GetMKLDNNData() const {
     MKLDNNStream::Get()->RegisterMem(ptr_->mkl_mem_->GetMem());
     return ptr_->mkl_mem_->GetRaw();
   }
+#endif
+                        LOG(FATAL)<<"mkldnnv1.0 GetMKLDNNData";
 }
 
 void NDArray::InvalidateMKLDNNData() {
@@ -678,6 +720,7 @@ void NDArray::CopyFrom(const mkldnn::memory &mem) {
 }
 
 mkldnn::memory *NDArray::CreateMKLDNNData(const mkldnn::memory::primitive_desc &desc) {
+#if 0
   if (desc.get_size() != shape().Size() * GetTypeSize(dtype_)) {
     LOG(FATAL) << "The size of NDArray doesn't match the requested MKLDNN memory desc";
     return nullptr;
@@ -722,9 +765,12 @@ mkldnn::memory *NDArray::CreateMKLDNNData(const mkldnn::memory::primitive_desc &
   ptr_->mkl_mem_.reset(new MKLDNNMemory(desc, ptr_->shandle.dptr));
   MKLDNNStream::Get()->RegisterMem(ptr_->mkl_mem_->GetMem());
   return ptr_->mkl_mem_->GetRaw();
+#endif
+                          LOG(FATAL)<<"mkldnnv1.0 CreateMKLDNNData";
 }
 
 void NDArray::UpdateMKLDNNMemDesc(mkldnn::memory::format format) {
+#if 0
   const mkldnn::memory *mem = GetMKLDNNData();
   auto mem_desc = mem->get_primitive_desc().desc();
   auto this_dtype = get_mkldnn_type(dtype());
@@ -734,6 +780,8 @@ void NDArray::UpdateMKLDNNMemDesc(mkldnn::memory::format format) {
   mkldnn::memory::primitive_desc pd(data_md, CpuEngine::Get()->get_engine());
   ptr_->mkl_mem_.reset(new MKLDNNMemory(pd, ptr_->shandle.dptr));
   MKLDNNStream::Get()->RegisterMem(ptr_->mkl_mem_->GetMem());
+#endif
+                            LOG(FATAL)<<"mkldnnv1.0 UpdateMKLDNNMemDesc";
 }
 #endif
 
@@ -2185,3 +2233,4 @@ MXNET_REGISTER_NDARRAY_FUN(_imdecode)
 .add_argument("size", "int", "length of str_img");
 #endif
 }  // namespace mxnet
+

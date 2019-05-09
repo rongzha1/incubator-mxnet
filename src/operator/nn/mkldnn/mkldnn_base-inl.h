@@ -250,13 +250,17 @@ inline static mkldnn::memory::desc GetMemDesc(const NDArray &arr, int dtype = -1
   mkldnn::memory::dims dims(ndim);
   dtype = (dtype == -1) ? arr.dtype() : dtype;
   for (size_t i = 0; i < dims.size(); i++) dims[i] = arr.shape()[i];
+#if 0  
   return mkldnn::memory::desc{dims, get_mkldnn_type(dtype), mkldnn::memory::format::any};
+#endif
+  LOG(FATAL)<<"mkldnnv1.0 GetMemDesc";
 }
 
 inline static mkldnn::memory::desc GetWeightDesc(const NDArray &arr,
                                                  int num_groups,
                                                  bool quantized = false) {
   int dtype = quantized ? mshadow::kInt8 : arr.dtype();
+#if 0  
   if (num_groups == 1) {
     return GetMemDesc(arr, dtype);
   } else {
@@ -276,7 +280,9 @@ inline static mkldnn::memory::desc GetWeightDesc(const NDArray &arr,
           static_cast<int>(arr.shape()[W])};
     }
     return mkldnn::memory::desc{tz, get_mkldnn_type(dtype), mkldnn::memory::format::any};
-  }
+  }  
+#endif
+  LOG(FATAL)<<"mkldnnv1.0 GetWeightDesc";
 }
 
 typedef std::shared_ptr<mkldnn::memory> mkldnn_mem_ptr;
@@ -370,12 +376,16 @@ class MKLDNNStream {
    * might want to separate mkldnn execution and memory cleanup.
    */
   void Submit(bool cleanup = true) {
+#if 0
     if (!net.empty()) {
       mkldnn::stream(mkldnn::stream::kind::eager).submit(net).wait();
       net.clear();
     }
     if (cleanup)
       Cleanup();
+#endif
+    
+  LOG(FATAL)<<"mkldnnv1.0 Submit";
   }
 
   void Cleanup() {
@@ -400,6 +410,7 @@ void MKLDNNCopy(const mkldnn::memory &mem, const mkldnn::memory* this_mem);
  */
 static inline mkldnn::memory *GetMKLDNNExact(
     const mkldnn::memory *mem, mkldnn::memory::primitive_desc desc) {
+#if 0
   mkldnn::memory::primitive_desc src_desc = mem->get_primitive_desc();
   if (desc == src_desc && desc.desc().data.format == src_desc.desc().data.format) {
     return const_cast<mkldnn::memory *>(mem);
@@ -409,6 +420,9 @@ static inline mkldnn::memory *GetMKLDNNExact(
     MKLDNNStream::Get()->RegisterMem(ret);
     return ret.get();
   }
+#endif
+  LOG(FATAL)<<"mkldnnv1.0 GetMKLDNNExact";
+
 }
 
 /*
@@ -532,11 +546,17 @@ class MKLDNNMemory {
   }
 
   mkldnn::memory::primitive_desc GetPrimitiveDesc() const {
+#if 0  
     return mem->get_primitive_desc();
+#endif 
+  LOG(FATAL)<<"mkldnnv1.0 GetPrimitiveDesc";
   }
 
   mkldnn::memory::primitive_desc GetPrimitiveDesc(mkldnn_memory_format_t format) const {
+ #if 0  
     return mxnet::GetPrimitiveDesc(mem->get_primitive_desc(), format);
+ #endif 
+   LOG(FATAL)<<"mkldnnv1.0 GetPrimitiveDesc";
   }
 
   mkldnn_memory_format_t GetDefaultFormat() const {
@@ -544,15 +564,24 @@ class MKLDNNMemory {
   }
 
   mkldnn_memory_format_t GetFormat() const {
+#if 0  
     return desc.data.format;
+#endif 
+    LOG(FATAL)<<"mkldnnv1.0 GetFormat";
   }
 
   bool IsMKLDNN() const {
+#if 0   
     return GetFormat() != GetDefaultFormat();
+#endif
+  LOG(FATAL)<<"mkldnnv1.0 IsMKLDNN";
   }
 
   bool SameFormat(mkldnn::memory::primitive_desc pd) const {
+#if 0   
     return mem->get_primitive_desc() == pd;
+#endif
+  LOG(FATAL)<<"mkldnnv1.0 SameFormat";
   }
 
   bool SameFormat(const mxnet::TShape &shape, int dtype) const {
@@ -560,9 +589,12 @@ class MKLDNNMemory {
   }
 
   void ReorderTo(mkldnn::memory *other) const {
+#if 0   
     std::vector<mkldnn::primitive> net;
     net.push_back(mkldnn::reorder(*mem, *other));
     mkldnn::stream(mkldnn::stream::kind::eager).submit(net).wait();
+#endif
+  LOG(FATAL)<<"mkldnnv1.0 ReorderTo";
   }
 };
 
@@ -620,3 +652,4 @@ bool MKLDNNStorageType(const nnvm::NodeAttrs &attrs,
 }  // namespace mxnet
 #endif
 #endif  // MXNET_OPERATOR_NN_MKLDNN_MKLDNN_BASE_INL_H_
+
