@@ -28,7 +28,7 @@
 #define MXNET_OPERATOR_NN_MKLDNN_MKLDNN_ACT_INL_H_
 
 
-#if MXNET_USE_MKLDNN == 0
+#if MXNET_USE_MKLDNN == 1
 #include <vector>
 #include <utility>
 #include "../activation-inl.h"
@@ -70,5 +70,5 @@ void MKLDNNActivationForward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
 }  // namespace op
 }  // namespace mxnet
 
-#endif  // MXNET_USE_MKLDNN == 0
+#endif  // MXNET_USE_MKLDNN == 1
 #endif  // MXNET_OPERATOR_NN_MKLDNN_MKLDNN_ACT_INL_H_

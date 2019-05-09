@@ -346,13 +346,20 @@ class TmpMemMgr {
 };
 
 class MKLDNNStream {
+  std::vector<std::unordered_map<int, mkldnn::memory>> net_args;
   std::vector<mkldnn::primitive> net;
   // Here we hold all memory related to the operators in the stream.
   std::vector<std::shared_ptr<const mkldnn::memory> > mem_holder;
-
+  stream s;
  public:
   static MKLDNNStream *Get();
-
+  MKLDNNStream():s(CpuEngine::Get()->get_engine()) {}
+  
+  void RegisterArgs(std::unordered_map<int, mkldnn::memory> args) {
+    net_args.push_back(args);
+  LOG(INFO)<<"net_args size "<<net_args.size();
+  }
+  
   void RegisterPrim(const mkldnn::primitive &prim) {
     net.push_back(prim);
   }
@@ -371,14 +378,16 @@ class MKLDNNStream {
    * might want to separate mkldnn execution and memory cleanup.
    */
   void Submit(bool cleanup = true) {
-#if 0
+    
     if (!net.empty()) {
-      mkldnn::stream(mkldnn::stream::kind::eager).submit(net).wait();
+    for(size_t i = 0; i < net.size(); i++) {
+      net.at(i).execute(s, net_args.at(i));
+    }
       net.clear();
+    net_args.clear();
     }
     if (cleanup)
       Cleanup();
-#endif
     
   LOG(FATAL)<<"mkldnnv1.0 Submit";
   }

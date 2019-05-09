@@ -391,18 +391,14 @@ void NDArray::set_fresh_out_grad(bool state) const {
 #if MXNET_USE_MKLDNN == 1
 
 bool NDArray::Chunk::IsMKLDNN() const {
-#if 0
   if (storage_type != kDefaultStorage)
     return false;
   if (mkl_mem_ == nullptr)
     return false;
   return mkl_mem_->IsMKLDNN();
-#endif
-  LOG(FATAL)<<"mkldnnv1.0 IsMKLDNN";
 }
 
 bool NDArray::Chunk::IsDefault() const {
-#if 0
   if (storage_type != kDefaultStorage)
     return false;
   // If we don't have mkldnn memory yet, we just assume it's not the default
@@ -410,8 +406,6 @@ bool NDArray::Chunk::IsDefault() const {
   if (mkl_mem_ == nullptr)
     return true;
   return !mkl_mem_->IsMKLDNN();
-#endif
-    LOG(FATAL)<<"mkldnnv1.0 IsDefault";
 }
 
 void NDArray::Chunk::Reorder2Default() {
