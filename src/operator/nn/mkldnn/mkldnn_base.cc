@@ -54,7 +54,7 @@ void *AlignMem(void *mem, size_t size, size_t alignment, size_t *space) {
   return reinterpret_cast<void *>(addr);
 }
 
-mkldnn::memory *TmpMemMgr::Alloc(const mkldnn::memory::primitive_desc &pd) {
+mkldnn::memory *TmpMemMgr::Alloc(const mkldnn::memory::desc &desc) {
 #if 0
   // We need to include the size of the memory used for alignment.
   this->est_size += pd.get_size() + alignment;
@@ -156,7 +156,7 @@ void MKLDNNCopy(const mkldnn::memory &mem, const mkldnn::memory* this_mem) {
 
 bool CanWriteTo(const NDArray &out_arr,
                 const NDArray &in_arr,
-                const mkldnn::memory::primitive_desc &desc) {
+                const mkldnn::memory::desc &desc) {
 #if 0                
   auto in_mem = in_arr.GetMKLDNNData();
   bool add_same = in_mem->get_data_handle() == out_arr.GetMKLDNNData()->get_data_handle();
@@ -168,7 +168,7 @@ bool CanWriteTo(const NDArray &out_arr,
 }
 
 mkldnn_output_t CreateMKLDNNMem(const NDArray &out_arr,
-                                const mkldnn::memory::primitive_desc &desc,
+                                const mkldnn::memory::desc &desc,
                                 OpReqType req,
                                 const NDArray* in_arr) {
 #if 0                
@@ -199,7 +199,7 @@ mkldnn_output_t CreateMKLDNNMem(const NDArray &out_arr,
 }
 
 mkldnn_output_t CreateMKLDNNWeightGrad(const NDArray &out_arr,
-                                       const mkldnn::memory::primitive_desc &desc,
+                                       const mkldnn::memory::desc &desc,
                                        OpReqType req) {
 #if 0                
   if (kAddTo == req) {
@@ -287,7 +287,7 @@ const mkldnn::memory *GetWeights(const NDArray &arr, int num_groups) {
 }
 
 const mkldnn::memory *GetWeights(const NDArray &arr,
-                                 const mkldnn::memory::primitive_desc &target_pd, int num_groups) {
+                                 const mkldnn::memory::desc &target_desc, int num_groups) {
 #if 0                
   const mkldnn::memory *mem = arr.GetMKLDNNData(target_pd);
   // If the weight array already uses the target layout, simply return it directly.
@@ -434,7 +434,7 @@ mkldnn_memory_format_t GetDefaultFormat(const mkldnn::memory::desc &desc) {
     LOG(FATAL)<<"mkldnnv1.0 GetDefaultFormat";
 }
 
-mkldnn::memory::primitive_desc GetPrimitiveDesc(mkldnn::memory::primitive_desc pd,
+mkldnn::memory::desc GetDesc(mkldnn::memory::desc desc,
                                                 mkldnn_memory_format_t format) {
 #if 0
   mkldnn::memory::dims dims(pd.desc().data.ndims);

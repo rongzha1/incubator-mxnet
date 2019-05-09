@@ -195,7 +195,7 @@ static int GetTypeSize(int dtype) {
 
 static inline size_t GetArraySize(const NDArray &arr) {
   if (arr.IsMKLDNNData()) {
-    return arr.GetMKLDNNData()->get_primitive_desc().get_size();
+    return arr.GetMKLDNNData()->get_desc().get_size();
   }
   return arr.shape().Size() * GetTypeSize(arr.dtype());
 }
@@ -347,7 +347,7 @@ class TmpMemMgr {
     this->est_size = 0;
   }
 
-  mkldnn::memory *Alloc(const mkldnn::memory::primitive_desc &pd);
+  mkldnn::memory *Alloc(const mkldnn::memory::desc &desc);
 };
 
 class MKLDNNStream {
@@ -409,7 +409,7 @@ void MKLDNNCopy(const mkldnn::memory &mem, const mkldnn::memory* this_mem);
  * the formats are different. I need to double check its format.
  */
 static inline mkldnn::memory *GetMKLDNNExact(
-    const mkldnn::memory *mem, mkldnn::memory::primitive_desc desc) {
+    const mkldnn::memory *mem, mkldnn::memory::desc desc) {
 #if 0
   mkldnn::memory::primitive_desc src_desc = mem->get_primitive_desc();
   if (desc == src_desc && desc.desc().data.format == src_desc.desc().data.format) {
@@ -437,10 +437,10 @@ static inline mkldnn::memory *GetMKLDNNExact(
  * the output back to the output NDArray.
  */
 mkldnn_output_t CreateMKLDNNMem(const NDArray &out_arr,
-                                const mkldnn::memory::primitive_desc &desc,
+                                const mkldnn::memory::desc &desc,
                                 OpReqType req, const NDArray* in_arr = nullptr);
 mkldnn_output_t CreateMKLDNNWeightGrad(const NDArray &out_arr,
-                                       const mkldnn::memory::primitive_desc &desc,
+                                       const mkldnn::memory::desc &desc,
                                        OpReqType req);
 /* This function has to be used with one of the functions above. */
 void CommitOutput(const NDArray &arr, const mkldnn_output_t &res);
@@ -469,12 +469,12 @@ static inline void CreateDefaultInputs(const std::vector<NDArray> &arrs,
 const mkldnn::memory *GetWeights(const NDArray &arr, int num_groups);
 
 const mkldnn::memory *GetWeights(const NDArray &arr,
-                                 const mkldnn::memory::primitive_desc &target_pd,
+                                 const mkldnn::memory::desc &target_desc,
                                  int num_groups);
 
 mkldnn_memory_format_t GetDefaultFormat(const mkldnn::memory::desc &desc);
 mkldnn_memory_format_t GetDefaultFormat(int num_dims);
-mkldnn::memory::primitive_desc GetPrimitiveDesc(mkldnn::memory::primitive_desc pd,
+mkldnn::memory::desc GetDesc(mkldnn::memory::desc pd,
                                                 mkldnn_memory_format_t format);
 
 inline bool same_shape(const mxnet::TShape &shape, const mkldnn_dims_t dims, int ndims) {
@@ -503,7 +503,7 @@ inline bool same_shape(const mxnet::TShape &shape, int dtype,
 }
 
 /*
- * There is a large overhead of getting mkldnn::memory::primitive_desc from
+ * There is a large overhead of getting mkldnn::memory::desc from
  * mkldnn::memory. This class is created to cache the metadata of mkldnn memory
  * to provide a much more lightweight method to access them.
  */
@@ -513,16 +513,15 @@ class MKLDNNMemory {
   size_t size;      // The number of bytes.
 
  public:
-  MKLDNNMemory(mkldnn::memory::primitive_desc pd, void *addr): desc(pd.desc()) {
-    mem.reset(new mkldnn::memory(pd, addr));
-    size = pd.get_size();
+  MKLDNNMemory(mkldnn::memory::desc mem_desc, void *addr): desc(mem_desc) {
+    mem.reset(new mkldnn::memory(desc, addr));
+    size = desc.get_size();
   }
 
   explicit MKLDNNMemory(std::shared_ptr<mkldnn::memory> mem): desc(
-      mem->get_primitive_desc().desc()) {
+      mem->get_desc()) {
     this->mem = mem;
-    mkldnn::memory::primitive_desc pd = mem->get_primitive_desc();
-    size = pd.get_size();
+    size = desc.get_size();
   }
 
   void SetDataHandle(void *handle) {
@@ -545,18 +544,16 @@ class MKLDNNMemory {
     return size;
   }
 
-  mkldnn::memory::primitive_desc GetPrimitiveDesc() const {
-#if 0  
-    return mem->get_primitive_desc();
-#endif 
-  LOG(FATAL)<<"mkldnnv1.0 GetPrimitiveDesc";
+  mkldnn::memory::desc GetDesc() const {
+    return mem->get_desc();
+  LOG(FATAL)<<"mkldnnv1.0 GetDesc";
   }
 
-  mkldnn::memory::primitive_desc GetPrimitiveDesc(mkldnn_memory_format_t format) const {
+  mkldnn::memory::desc GetDesc(mkldnn_memory_format_t format) const {
  #if 0  
     return mxnet::GetPrimitiveDesc(mem->get_primitive_desc(), format);
  #endif 
-   LOG(FATAL)<<"mkldnnv1.0 GetPrimitiveDesc";
+   LOG(FATAL)<<"mkldnnv1.0 GetDesc";
   }
 
   mkldnn_memory_format_t GetDefaultFormat() const {
@@ -577,7 +574,7 @@ class MKLDNNMemory {
   LOG(FATAL)<<"mkldnnv1.0 IsMKLDNN";
   }
 
-  bool SameFormat(mkldnn::memory::primitive_desc pd) const {
+  bool SameFormat(mkldnn::memory::desc desc) const {
 #if 0   
     return mem->get_primitive_desc() == pd;
 #endif

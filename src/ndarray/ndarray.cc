@@ -170,7 +170,7 @@ nnvm::Symbol NDArray::get_autograd_symbol() const {
 
 #if MXNET_USE_MKLDNN == 1
 
-NDArray::NDArray(mkldnn::memory::primitive_desc mem_pd)
+NDArray::NDArray(mkldnn::memory::desc mem_desc)
     : storage_type_(kDefaultStorage), entry_({nullptr, 0, 0}) {
 #if 0    
   auto mem_desc = mem_pd.desc();
@@ -436,7 +436,7 @@ void NDArray::Chunk::Reorder2Default() {
     LOG(FATAL)<<"mkldnnv1.0 Reorder2Default";
 }
 
-void NDArray::Chunk::MKLDNNDataReorder(const mkldnn::memory::primitive_desc &pd) {
+void NDArray::Chunk::MKLDNNDataReorder(const mkldnn::memory::desc &desc) {
 #if 0
   // If the memory already uses the specified layout, don't do anything.
   if (mkl_mem_ != nullptr && mkl_mem_->SameFormat(pd))
@@ -521,7 +521,7 @@ void NDArray::Chunk::SetMKLMem(const mxnet::TShape &shape, int dtype) {
 }
 
 const mkldnn::memory *NDArray::GetMKLDNNData(
-    const mkldnn::memory::primitive_desc &desc) const {
+    const mkldnn::memory::desc &desc) const {
 #if 0
   if (desc.get_size() != shape().Size() * GetTypeSize(dtype_)) {
     LOG(FATAL) << "The size of NDArray doesn't match the requested MKLDNN memory desc";
@@ -545,7 +545,7 @@ const mkldnn::memory *NDArray::GetMKLDNNData(
 }
 
 const mkldnn::memory *NDArray::GetMKLDNNDataReorder(
-    const mkldnn::memory::primitive_desc &new_pd) const {
+    const mkldnn::memory::desc &new_desc) const {
 #if 0
   if (new_pd.get_size() != shape().Size() * GetTypeSize(dtype_)) {
     LOG(FATAL) << "The size of NDArray doesn't match the requested MKLDNN memory desc";
@@ -639,7 +639,7 @@ void NDArray::Reorder2DefaultAsync() {
                   LOG(FATAL)<<"mkldnnv1.0 Reorder2DefaultAsync";
 }
 
-void NDArray::MKLDNNDataReorderAsync(const mkldnn::memory::primitive_desc &desc) {
+void NDArray::MKLDNNDataReorderAsync(const mkldnn::memory::desc &desc) {
 #if 0
   std::vector<Engine::VarHandle> const_vars;
   std::vector<Engine::VarHandle> mutable_vars(1, this->var());
@@ -719,7 +719,7 @@ void NDArray::CopyFrom(const mkldnn::memory &mem) {
   MKLDNNCopy(mem, this_mem);
 }
 
-mkldnn::memory *NDArray::CreateMKLDNNData(const mkldnn::memory::primitive_desc &desc) {
+mkldnn::memory *NDArray::CreateMKLDNNData(const mkldnn::memory::desc &desc) {
 #if 0
   if (desc.get_size() != shape().Size() * GetTypeSize(dtype_)) {
     LOG(FATAL) << "The size of NDArray doesn't match the requested MKLDNN memory desc";
