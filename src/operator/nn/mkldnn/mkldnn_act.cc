@@ -34,7 +34,7 @@
 #include "../../operator_common.h"
 #include "mkldnn_act-inl.h"
 
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 
 #include <mkldnn.hpp>
 

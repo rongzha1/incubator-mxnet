@@ -27,7 +27,7 @@
 #include "./deconvolution-inl.h"
 #include "../operator_common.h"
 #include "../../common/utils.h"
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 #include "./mkldnn/mkldnn_ops-inl.h"
 #include "./mkldnn/mkldnn_base-inl.h"
 #endif
@@ -284,7 +284,7 @@ static bool DeconvolutionType(const nnvm::NodeAttrs& attrs,
   return true;
 }
 
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 inline static bool DeconvStorageType(const nnvm::NodeAttrs& attrs,
                                      const int dev_mask,
                                      DispatchMode* dispatch_mode,
@@ -429,14 +429,14 @@ NNVM_REGISTER_OP(Deconvolution)
 })
 .set_attr<mxnet::FInferShape>("FInferShape", DeconvolutionShape)
 .set_attr<nnvm::FInferType>("FInferType", DeconvolutionType)
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 .set_attr<FInferStorageType>("FInferStorageType", DeconvStorageType)
 #endif
 .set_attr<FResourceRequest>("FResourceRequest", [](const NodeAttrs& n) {
   return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
 })
 .set_attr<FCompute>("FCompute<cpu>", DeconvolutionCompute<cpu>)
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 .set_attr<bool>("TIsMKLDNN", true)
 .set_attr<FComputeEx>("FComputeEx<cpu>", DeconvolutionComputeExCPU)
 #endif
@@ -453,14 +453,14 @@ NNVM_REGISTER_OP(_backward_Deconvolution)
   return params.no_bias ? 2 : 3;
 })
 .set_attr<nnvm::TIsBackward>("TIsBackward", true)
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 .set_attr<FInferStorageType>("FInferStorageType", BackwardDeconvStorageType)
 #endif
 .set_attr<FResourceRequest>("FResourceRequest", [](const NodeAttrs& n) {
   return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
 })
 .set_attr_parser(DeconvolutionParamParser)
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 .set_attr<bool>("TIsMKLDNN", true)
 .set_attr<FComputeEx>("FComputeEx<cpu>", DeconvolutionGradComputeExCPU)
 #endif

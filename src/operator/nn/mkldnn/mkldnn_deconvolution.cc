@@ -23,7 +23,7 @@
  * \author Da Zheng, Rong Zhang (rong.a.zhang@intel.com)
 */
 
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 
 #include "../deconvolution-inl.h"
 #include "./mkldnn_ops-inl.h"
@@ -569,4 +569,4 @@ void MKLDNNDeconvolutionBackward(const nnvm::NodeAttrs &attrs,
 }  // namespace op
 }  // namespace mxnet
 
-#endif  // MXNET_USE_MKLDNN == 1
+#endif  // MXNET_USE_MKLDNN == 0

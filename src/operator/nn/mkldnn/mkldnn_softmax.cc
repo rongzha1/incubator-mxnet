@@ -28,7 +28,7 @@
 #include "./mkldnn_base-inl.h"
 #include "../../tensor/broadcast_reduce_op.h"
 
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 namespace mxnet {
 namespace op {
 

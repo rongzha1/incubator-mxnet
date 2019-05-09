@@ -26,7 +26,7 @@
 
 #ifndef MXNET_OPERATOR_SUBGRAPH_MKLDNN_MKLDNN_FC_PROPERTY_H_
 #define MXNET_OPERATOR_SUBGRAPH_MKLDNN_MKLDNN_FC_PROPERTY_H_
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 
 #include <string>
 #include <vector>
@@ -186,5 +186,5 @@ class SgMKLDNNFCProperty : public SubgraphProperty {
 }  // namespace op
 }  // namespace mxnet
 
-#endif  // if MXNET_USE_MKLDNN == 1
+#endif  // if MXNET_USE_MKLDNN == 0
 #endif  // MXNET_OPERATOR_SUBGRAPH_MKLDNN_MKLDNN_FC_PROPERTY_H_

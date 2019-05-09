@@ -23,7 +23,7 @@
  * \author Zhiyuan Huang
 */
 
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 
 #include "./mkldnn_ops-inl.h"
 #include "./mkldnn_base-inl.h"
@@ -101,4 +101,4 @@ void MKLDNNSlice(const SliceParam &param, const OpContext& ctx,
 
 }  // namespace op
 }  // namespace mxnet
-#endif  // MXNET_USE_MKLDNN == 1
+#endif  // MXNET_USE_MKLDNN == 0

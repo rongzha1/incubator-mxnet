@@ -17,7 +17,7 @@
  * under the License.
  */
 
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 
 #include "mkldnn_conv_property.h"
 #include "mkldnn_fc_property.h"
@@ -37,4 +37,4 @@ MXNET_REGISTER_SUBGRAPH_PROPERTY(MKLDNN_POST_QUANTIZE, SgMKLDNNPostQuantizeAlign
 }  // namespace op
 }  // namespace mxnet
 
-#endif  // MXNET_USE_MKLDNN == 1
+#endif  // MXNET_USE_MKLDNN == 0

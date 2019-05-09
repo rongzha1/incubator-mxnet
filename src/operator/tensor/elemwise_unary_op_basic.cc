@@ -158,7 +158,7 @@ static void CopyEx(const nnvm::NodeAttrs& attrs,
                    const std::vector<NDArray>& outputs) {
   CHECK_EQ(inputs.size(), 1U);
   CHECK_EQ(outputs.size(), 1U);
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
   const auto in_stype = inputs[0].storage_type();
   const auto out_stype = outputs[0].storage_type();
   if (inputs[0].IsMKLDNNData()) {
@@ -184,7 +184,7 @@ static inline bool CopyStorageType(const nnvm::NodeAttrs& attrs,
   CHECK_EQ(out_attrs->size(), 1);
   bool ret = ElemwiseStorageType<1, 1, false, true, true>(attrs, dev_mask, dispatch_mode,
                                                           in_attrs, out_attrs);
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
   // We have to make sure all inputs are default layouts. Otherwise, we might
   // want to fallback.
   if (dev_mask == mshadow::cpu::kDevMask
@@ -202,7 +202,7 @@ MXNET_OPERATOR_REGISTER_UNARY(_copy)
 .set_attr<FInferStorageType>("FInferStorageType", CopyStorageType)
 .set_attr<FCompute>("FCompute<cpu>", UnaryOp::IdentityCompute<cpu>)
 .set_attr<FComputeEx>("FComputeEx<cpu>", CopyEx)
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 .set_attr<FResourceRequest>("FResourceRequest", [](const NodeAttrs& n) {
   return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
 })
@@ -225,7 +225,7 @@ NNVM_REGISTER_OP(_backward_copy)
 .set_attr<FInferStorageType>("FInferStorageType", CopyStorageType)
 .set_attr<FCompute>("FCompute<cpu>", UnaryOp::IdentityCompute<cpu>)
 .set_attr<FComputeEx>("FComputeEx<cpu>", CopyEx)
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 .set_attr<bool>("TIsMKLDNN", true)
 .set_attr<FResourceRequest>("FResourceRequest", [](const NodeAttrs& n) {
   return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};

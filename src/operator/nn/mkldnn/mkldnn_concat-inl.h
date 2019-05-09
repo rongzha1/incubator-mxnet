@@ -26,7 +26,7 @@
 #define MXNET_OPERATOR_NN_MKLDNN_MKLDNN_CONCAT_INL_H_
 
 
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 #include <vector>
 #include <utility>
 #include "../concat-inl.h"
@@ -79,5 +79,5 @@ static MKLDNNConcatFwd &GetConcatForward(
 }  // namespace op
 }  // namespace mxnet
 
-#endif  // MXNET_USE_MKLDNN == 1
+#endif  // MXNET_USE_MKLDNN == 0
 #endif  // MXNET_OPERATOR_NN_MKLDNN_MKLDNN_CONCAT_INL_H_

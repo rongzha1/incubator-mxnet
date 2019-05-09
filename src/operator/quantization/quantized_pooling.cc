@@ -23,7 +23,7 @@
 */
 #include <mxnet/op_attr_types.h>
 #include "../nn/pooling-inl.h"
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 #include "../nn/mkldnn/mkldnn_pooling-inl.h"
 #endif
 
@@ -122,7 +122,7 @@ inline static bool QuantizedPoolingStorageType(const nnvm::NodeAttrs &attrs,
   CHECK_EQ(in_attrs->size(), 3);
 
   *dispatch_mode = DispatchMode::kFCompute;
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
   const PoolingParam &param = nnvm::get<PoolingParam>(attrs.parsed);
   if (dev_mask == mshadow::cpu::kDevMask && SupportMKLDNNPooling(param)) {
     *dispatch_mode = DispatchMode::kFComputeEx;

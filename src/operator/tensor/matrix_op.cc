@@ -105,7 +105,7 @@ DMLC_REGISTER_PARAMETER(SqueezeParam);
 DMLC_REGISTER_PARAMETER(DepthToSpaceParam);
 DMLC_REGISTER_PARAMETER(SplitParam);
 
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 void MKLDNNReshape(const NDArray &in_data, const NDArray &out_data) {
   MSHADOW_TYPE_SWITCH(in_data.dtype(), DType, {
     auto this_mem = in_data.GetMKLDNNData();
@@ -227,7 +227,7 @@ If the argument `reverse` is set to 1, then the special values are inferred from
 .set_attr<nnvm::FInferType>("FInferType", ElemwiseType<1, 1>)
 .set_attr<nnvm::FGradient>("FGradient", ElemwiseGradUseNone{"_backward_reshape"})
 .set_attr<FCompute>("FCompute<cpu>", UnaryOp::IdentityCompute<cpu>)
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 .set_attr<bool>("TIsMKLDNN", true)
 .set_attr<FComputeEx>("FComputeEx<cpu>", ReshapeComputeExCPU)
 .set_attr<FInferStorageType>("FInferStorageType", ReshapeStorageType)
@@ -254,7 +254,7 @@ static void FlattenEx(const nnvm::NodeAttrs& attrs,
                       const std::vector<NDArray>& outputs) {
   CHECK_EQ(inputs.size(), 1U);
   CHECK_EQ(outputs.size(), 1U);
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
   if (inputs[0].IsMKLDNNData()) {
     MKLDNNCopy(attrs, ctx, inputs[0], req[0], outputs[0]);
     // If the output is a special MKLDNN layout and the number of dimensions
@@ -272,7 +272,7 @@ static void FlattenEx(const nnvm::NodeAttrs& attrs,
 #endif
 }
 
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 static inline bool FlattenStorageType(const nnvm::NodeAttrs& attrs,
                                    const int dev_mask,
                                    DispatchMode* dispatch_mode,
@@ -317,13 +317,13 @@ Example::
 .set_num_outputs(1)
 .set_attr<mxnet::FInferShape>("FInferShape", FlattenShape)
 .set_attr<nnvm::FInferType>("FInferType", ElemwiseType<1, 1>)
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 .set_attr<FInferStorageType>("FInferStorageType", FlattenStorageType)
 #endif
 .set_attr<nnvm::FGradient>("FGradient", ElemwiseGradUseNone{ "_backward_copy" })
 .set_attr<FCompute>("FCompute<cpu>", UnaryOp::IdentityCompute<cpu>)
 .set_attr<FComputeEx>("FComputeEx<cpu>", FlattenEx)
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 .set_attr<bool>("TIsMKLDNN", true)
 .set_attr<FResourceRequest>("FResourceRequest", [](const NodeAttrs& n) {
   return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
@@ -339,7 +339,7 @@ Example::
   })
 .add_argument("data", "NDArray-or-Symbol", "Input array.");
 
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 static void TransposeComputeExCPU(const nnvm::NodeAttrs& attrs,
                                   const OpContext& ctx,
                                   const std::vector<NDArray>& inputs,
@@ -422,7 +422,7 @@ Examples::
     }
   })
 .set_attr<FCompute>("FCompute<cpu>", Transpose<cpu>)
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 .set_attr<bool>("TIsMKLDNN", true)
 .set_attr<FComputeEx>("FComputeEx<cpu>", TransposeComputeExCPU)
 .set_attr<FInferStorageType>("FInferStorageType", TransposeStorageType)
@@ -467,7 +467,7 @@ void SliceExCPU(const nnvm::NodeAttrs& attrs,
   auto in_stype = inputs[0].storage_type();
   if (in_stype == kCSRStorage) {
     SliceCsrImpl<cpu>(param, ctx, inputs[0], req[0], outputs[0]);
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
   } else if (in_stype == kDefaultStorage) {
     if (SupportMKLDNN(inputs[0])) {
       MKLDNNSlice(param, ctx, inputs[0], req[0], outputs[0]);
@@ -539,7 +539,7 @@ Example::
 .set_attr<nnvm::FGradient>("FGradient", ElemwiseGradUseNone{"_backward_slice"})
 .set_attr<FCompute>("FCompute<cpu>", SliceOpForward<cpu>)
 .set_attr<FComputeEx>("FComputeEx<cpu>", SliceExCPU)
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 .set_attr<bool>("TIsMKLDNN", true)
 #endif
 .add_argument("data", "NDArray-or-Symbol", "Source input")

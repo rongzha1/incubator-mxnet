@@ -26,7 +26,7 @@
 #ifndef TEST_MKLDNN_H_
 #define TEST_MKLDNN_H_
 
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 
 #include <set>
 #include <string>

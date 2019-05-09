@@ -23,7 +23,7 @@
  * \brief
  */
 
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 #include "../../nn/mkldnn/mkldnn_concat-inl.h"
 #include "../quantization_utils.h"
 
@@ -116,4 +116,4 @@ NNVM_REGISTER_OP(_contrib_quantized_concat)
 }  // namespace op
 }  // namespace mxnet
 
-#endif  // MXNET_USE_MKLDNN == 1
+#endif  // MXNET_USE_MKLDNN == 0

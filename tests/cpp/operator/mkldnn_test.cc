@@ -23,7 +23,7 @@
  *  \author Da Zheng
  */
 
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 
 #include <mkldnn_types.h>
 #include <cmath>

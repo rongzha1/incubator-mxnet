@@ -25,7 +25,7 @@
 #ifndef MXNET_OPERATOR_NN_MKLDNN_MKLDNN_LRN_INL_H_
 #define MXNET_OPERATOR_NN_MKLDNN_MKLDNN_LRN_INL_H_
 
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 #include <utility>
 #include <mkldnn.hpp>
 #include "../lrn-inl.h"
@@ -318,5 +318,5 @@ void MKLDNNLRNBackward(const OpContext &ctx, const LRNParam &param,
 }
 }  // namespace op
 }  // namespace mxnet
-#endif  // MXNET_USE_MKLDNN == 1
+#endif  // MXNET_USE_MKLDNN == 0
 #endif  // MXNET_OPERATOR_NN_MKLDNN_MKLDNN_LRN_INL_H__

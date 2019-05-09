@@ -24,7 +24,7 @@
  * \author Ciyong Chen
  */
 
-#if MXNET_USE_MKLDNN == 1
+#if MXNET_USE_MKLDNN == 0
 #include "../../nn/mkldnn/mkldnn_fully_connected-inl.h"
 #include "../quantization_utils.h"
 
@@ -115,4 +115,4 @@ void MKLDNNQuantizedFullyConnectedForward(const nnvm::NodeAttrs &attrs,
 }  // namespace op
 }  // namespace mxnet
 
-#endif  // MXNET_USE_MKLDNN == 1
+#endif  // MXNET_USE_MKLDNN == 0
