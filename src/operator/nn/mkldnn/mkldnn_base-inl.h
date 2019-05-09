@@ -509,7 +509,7 @@ class MKLDNNMemory {
 
  public:
   MKLDNNMemory(mkldnn::memory::desc mem_desc, void *addr): desc(mem_desc) {
-    mem.reset(new mkldnn::memory(desc, addr));
+    mem.reset(new mkldnn::memory(desc, CpuEngine::Get()->get_engine(), addr));
     size = desc.get_size();
   }
 
