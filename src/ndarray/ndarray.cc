@@ -472,7 +472,6 @@ void NDArray::Chunk::MKLDNNDataReorder(const mkldnn::memory::desc &desc) {
 }
 
 void NDArray::Chunk::SetMKLMem(const mxnet::TShape &shape, int dtype) {
-#if 0
   // The shape of the array and the one of the MKL memory may mismatch.
   // For example, if the array stores parameters, the MKL memory may store data
   // in 5 dimensions while the NDArray stores data in 4 dimensions.
@@ -490,28 +489,23 @@ void NDArray::Chunk::SetMKLMem(const mxnet::TShape &shape, int dtype) {
   } else {
     LOG(FATAL) << "MKLDNN doesn't support " << shape.ndim() << " dimensions";
   }
-  mkldnn::memory::format layout = mkldnn::memory::format::format_undef;
+  mkldnn::memory::format_tag layout = mkldnn::memory::format_tag::undef;
   switch (dims.size()) {
-    case 1: layout = mkldnn::memory::format::x; break;
-    case 2: layout = mkldnn::memory::format::nc; break;
-    case 3: layout = mkldnn::memory::format::ncw; break;
-    case 4: layout = mkldnn::memory::format::nchw; break;
+    case 1: layout = mkldnn::memory::format_tag::x; break;
+    case 2: layout = mkldnn::memory::format_tag::nc; break;
+    case 3: layout = mkldnn::memory::format_tag::ncw; break;
+    case 4: layout = mkldnn::memory::format_tag::nchw; break;
     // This isn't the right layout when the data has 5 dimensions in MXNet.
     // MXNet interprets 5 dimensions as ncdhw, but MKLDNN doesn't have
     // a corresponding format.
-    case 5: layout = mkldnn::memory::format::goihw; break;
+    case 5: layout = mkldnn::memory::format_tag::goihw; break;
   }
   mkldnn::memory::desc data_md{dims, get_mkldnn_type(dtype), layout};
-  auto cpu_engine = CpuEngine::Get()->get_engine();
   if (shandle.dptr == nullptr) {
     CHECK(delay_alloc);
     CheckAndAlloc();
   }
-  mkldnn::memory::primitive_desc pd(data_md, cpu_engine);
-  CHECK(shandle.size >= pd.get_size());
-  mkl_mem_.reset(new MKLDNNMemory(pd, shandle.dptr));
-#endif
-        LOG(FATAL)<<"mkldnnv1.0 SetMKLMem";
+  mkl_mem_.reset(new MKLDNNMemory(data_md, shandle.dptr));
 }
 
 const mkldnn::memory *NDArray::GetMKLDNNData(
@@ -649,7 +643,6 @@ void NDArray::MKLDNNDataReorderAsync(const mkldnn::memory::desc &desc) {
 }
 
 const mkldnn::memory *NDArray::GetMKLDNNData() const {
-#if 0    
   CHECK(storage_type() == kDefaultStorage);
   bool is_view = IsView();
   if (IsMKLDNNData()) {
@@ -661,6 +654,8 @@ const mkldnn::memory *NDArray::GetMKLDNNData() const {
     // SetMKLMem may mess up mkl_mem_.
     return ptr_->mkl_mem_->GetRaw();
   } else if (is_view) {
+    LOG(FATAL)<<"mkldnnv1.0 GetMKLDNNData";
+#if 0
     // If this is a view, we can't create a MKLDNN memory for the chunk
     // because we don't have the complete data type and shape information for
     // the chunk.
@@ -679,6 +674,7 @@ const mkldnn::memory *NDArray::GetMKLDNNData() const {
     std::shared_ptr<mkldnn::memory> ret(new mkldnn::memory(new_pd, off_addr));
     MKLDNNStream::Get()->RegisterMem(ret);
     return ret.get();
+#endif
   } else {
     // If this isn't a view, we can create a MKLDNN memory and store it in the
     // chunk.
@@ -686,8 +682,6 @@ const mkldnn::memory *NDArray::GetMKLDNNData() const {
     MKLDNNStream::Get()->RegisterMem(ptr_->mkl_mem_->GetMem());
     return ptr_->mkl_mem_->GetRaw();
   }
-#endif
-                        LOG(FATAL)<<"mkldnnv1.0 GetMKLDNNData";
 }
 
 void NDArray::InvalidateMKLDNNData() {
@@ -714,12 +708,16 @@ void NDArray::CopyFrom(const mkldnn::memory &mem) {
 }
 
 mkldnn::memory *NDArray::CreateMKLDNNData(const mkldnn::memory::desc &desc) {
-#if 0
   if (desc.get_size() != shape().Size() * GetTypeSize(dtype_)) {
-    LOG(FATAL) << "The size of NDArray doesn't match the requested MKLDNN memory desc";
+    LOG(FATAL) << "The size of NDArray doesn't match the requested MKLDNN memory desc "<<desc.get_size()<< " vs "<<shape().Size() * GetTypeSize(dtype_);
     return nullptr;
   }
-
+  
+  LOG(INFO)<<"mkldnnv1.0 CreateMKLDNNData need add other branch";
+   ptr_->SetMKLMem(shape_, dtype_);
+   MKLDNNStream::Get()->RegisterMem(ptr_->mkl_mem_->GetMem());
+   return GetMKLDNNExact(ptr_->mkl_mem_->GetRaw(), desc);
+#if 0
   mkldnn::memory::primitive_desc _desc = desc;
   mkldnn_memory_format_t required_format = _desc.desc().data.format;
   mkldnn_memory_format_t def_format = GetDefaultFormat(_desc.desc());
@@ -746,7 +744,6 @@ mkldnn::memory *NDArray::CreateMKLDNNData(const mkldnn::memory::desc &desc) {
     ptr_->Reorder2Default();
     return nullptr;
   }
-
   if (ptr_->mkl_mem_)
     CHECK(ptr_->mkl_mem_->GetDataHandle() == ptr_->shandle.dptr);
   if (ptr_->mkl_mem_ && ptr_->mkl_mem_->GetPrimitiveDesc() == desc) {
@@ -760,7 +757,6 @@ mkldnn::memory *NDArray::CreateMKLDNNData(const mkldnn::memory::desc &desc) {
   MKLDNNStream::Get()->RegisterMem(ptr_->mkl_mem_->GetMem());
   return ptr_->mkl_mem_->GetRaw();
 #endif
-                          LOG(FATAL)<<"mkldnnv1.0 CreateMKLDNNData";
 }
 
 void NDArray::UpdateMKLDNNMemDesc(mkldnn::memory::format_tag format) {

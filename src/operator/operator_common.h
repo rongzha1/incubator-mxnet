@@ -531,34 +531,37 @@ class OpSignature {
     hash = hash * 2 + desc.data.data_type;
     eles.push_back(desc.data.data_type);
     for (int i = 0; i < desc.data.ndims; i++) {
-      hash = hash * 2 + desc.data.dims[i];
-      eles.push_back(desc.data.dims[i]);
+    hash = hash * 2 + desc.data.dims[i];
+    eles.push_back(desc.data.dims[i]);
     }
+    #if 0
     switch(desc.data.format_kind) {
-      case mkldnn_blocked:
-        for (int i = 0; i < desc.data.ndims; i++) {
-          hash = hash * 2 + desc.data.format_desc.blocking.strides[i];
-          eles.push_back(desc.data.format_desc.blocking.strides[i]);
-        }
-        for (int i = 0; i < desc.data.format_desc.blocking.inner_nblks; i++) {
-          hash = hash * 2 + desc.data.format_desc.blocking.inner_blks[i];
-          hash = hash * 2 + desc.data.format_desc.blocking.inner_idxs[i];
-          eles.push_back(desc.data.format_desc.blocking.inner_blks[i]);
-          eles.push_back(desc.data.format_desc.blocking.inner_idxs[i]);
-        }
-        break;
-      case mkldnn_format_kind_wino:
-        hash = hash * 2 + desc.data.format_desc.wino_desc.wino_format;
-        eles.push_back(desc.data.format_desc.wino_desc.wino_format);
-        break;
-      case mkldnn_format_kind_rnn_packed:
-        hash = hash * 2 + desc.data.format_desc.rnn_packed_desc.format;
-        eles.push_back(desc.data.format_desc.rnn_packed_desc.format);
-        break;
-      default:
-       // nothing need to add
-        break;
+    case mkldnn_blocked:
+      for (int i = 0; i < desc.data.ndims; i++) {
+      hash = hash * 2 + desc.data.format_desc.blocking.strides[i];
+      eles.push_back(desc.data.format_desc.blocking.strides[i]);
+      }
+      for (int i = 0; i < desc.data.format_desc.blocking.inner_nblks; i++) {
+      hash = hash * 2 + desc.data.format_desc.blocking.inner_blks[i];
+      hash = hash * 2 + desc.data.format_desc.blocking.inner_idxs[i];
+      eles.push_back(desc.data.format_desc.blocking.inner_blks[i]);
+      eles.push_back(desc.data.format_desc.blocking.inner_idxs[i]);
+      }
+      break;
+    case mkldnn_format_kind_wino:
+      hash = hash * 2 + desc.data.format_desc.wino_desc.wino_format;
+      eles.push_back(desc.data.format_desc.wino_desc.wino_format);
+      break;
+    case mkldnn_format_kind_rnn_packed:
+      hash = hash * 2 + desc.data.format_desc.rnn_packed_desc.format;
+      eles.push_back(desc.data.format_desc.rnn_packed_desc.format);
+      break;
+    default:
+     // nothing need to add
+      break;
     }
+    #endif
+    LOG(INFO)<<"mkldnnv1.0 need to add format TODO";
   }
 #endif
 
@@ -646,3 +649,4 @@ class ParamOpSign: public OpSignature {
 }  // namespace op
 }  // namespace mxnet
 #endif  // MXNET_OPERATOR_OPERATOR_COMMON_H_
+

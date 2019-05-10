@@ -383,13 +383,11 @@ class MKLDNNStream {
     for(size_t i = 0; i < net.size(); i++) {
       net.at(i).execute(s, net_args.at(i));
     }
-      net.clear();
+    net.clear();
     net_args.clear();
     }
     if (cleanup)
       Cleanup();
-    
-  LOG(FATAL)<<"mkldnnv1.0 Submit";
   }
 
   void Cleanup() {
@@ -414,6 +412,8 @@ void MKLDNNCopy(const mkldnn::memory &mem, const mkldnn::memory* this_mem);
  */
 static inline mkldnn::memory *GetMKLDNNExact(
     const mkldnn::memory *mem, mkldnn::memory::desc desc) {
+  LOG(INFO)<<"mkldnnv1.0 GetMKLDNNExact need add other branch";
+    return const_cast<mkldnn::memory *>(mem);
 #if 0
   mkldnn::memory::primitive_desc src_desc = mem->get_primitive_desc();
   if (desc == src_desc && desc.desc().data.format == src_desc.desc().data.format) {
@@ -425,7 +425,6 @@ static inline mkldnn::memory *GetMKLDNNExact(
     return ret.get();
   }
 #endif
-  LOG(FATAL)<<"mkldnnv1.0 GetMKLDNNExact";
 
 }
 
@@ -575,7 +574,21 @@ class MKLDNNMemory {
 #if 0   
     return GetFormat() != GetDefaultFormat();
 #endif
-  LOG(FATAL)<<"mkldnnv1.0 IsMKLDNN";
+    bool rslt = true;
+    if(desc.data.format_kind == mkldnn_blocked ) {
+      int i = 0;
+      for(i = 0; i < desc.data.ndims-1; i++) {
+        if(desc.data.format_desc.blocking.strides[i] < desc.data.format_desc.blocking.strides[i + 1]) {
+          break;
+        }
+      }
+      if(i == desc.data.ndims-1) {
+        rslt = false;
+      }
+    LOG(INFO)<<"ndim "<< desc.data.ndims <<" i "<<i <<" mkldnn_blocked "<< (desc.data.format_kind == mkldnn_blocked ) << " stride "<< desc.data.format_desc.blocking.strides[i] << " i+1 "<<desc.data.format_desc.blocking.strides[i+1];
+    }
+    LOG(INFO)<<"mkldnnv1.0 IsMKLDNN return "<< rslt;
+    return rslt;
   }
 
   bool SameFormat(mkldnn::memory::desc desc) const {

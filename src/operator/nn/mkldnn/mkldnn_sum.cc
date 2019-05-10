@@ -27,37 +27,36 @@
 #include "./mkldnn_ops-inl.h"
 #include "./mkldnn_base-inl.h"
 
-#if MXNET_USE_MKLDNN == 0
+#if MXNET_USE_MKLDNN == 1
 namespace mxnet {
 namespace op {
 
 void MKLDNNSum(const mkldnn::memory &arr1, const mkldnn::memory &arr2,
          const mkldnn::memory &out) {
-  std::vector<mkldnn::memory::primitive_desc> input_pds(2);
+  std::vector<mkldnn::memory::desc> input_pds(2);
   std::vector<float> scales(2, 1);
-  std::vector<mkldnn::primitive::at> inputs;
-  input_pds[0] = arr1.get_primitive_desc();
-  input_pds[1] = arr2.get_primitive_desc();
+  input_pds[0] = arr1.get_desc();
+  input_pds[1] = arr2.get_desc();
   CHECK(input_pds[0] == input_pds[0]);
   const mkldnn::memory *in_mem1 = &arr1;
   const mkldnn::memory *in_mem2 = &arr2;
-  auto output_pd = out.get_primitive_desc();
+  auto output_pd = out.get_desc();
   if (input_pds[0] != output_pd) {
     auto tmp_memory1 = TmpMemMgr::Get()->Alloc(output_pd);
     auto tmp_memory2 = TmpMemMgr::Get()->Alloc(output_pd);
     mxnet::MKLDNNCopy(arr1, tmp_memory1);
     mxnet::MKLDNNCopy(arr2, tmp_memory2);
-    input_pds[0] = tmp_memory1->get_primitive_desc();
-    input_pds[1] = tmp_memory2->get_primitive_desc();
+    input_pds[0] = tmp_memory1->get_desc();
+    input_pds[1] = tmp_memory2->get_desc();
     in_mem1 = tmp_memory1;
     in_mem2 = tmp_memory2;
   }
-  inputs.push_back(*in_mem1);
-  inputs.push_back(*in_mem2);
-  mkldnn::sum::primitive_desc sum_pd(scales, input_pds);
-  MKLDNNStream::Get()->RegisterPrim(mkldnn::sum(sum_pd, inputs, out));
+  mkldnn::sum::primitive_desc sum_pd(output_pd, scales, input_pds, CpuEngine::Get()->get_engine());
+  MKLDNNStream::Get()->RegisterPrim(mkldnn::sum(sum_pd));
+  MKLDNNStream::Get()->RegisterArgs({ { MKLDNN_ARG_SRC, arr1 }, { MKLDNN_ARG_SRC, arr2 },
+            { MKLDNN_ARG_DST, out } });
 }
-
+#if 0
 void MKLDNNSumForward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
                       const std::vector<NDArray> &inputs, const OpReqType &req,
                       const NDArray &out_data) {
@@ -90,7 +89,7 @@ void MKLDNNSumForward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
   CommitOutput(out_data, mem);
   stream->Submit();
 }
-
+#endif
 }  // namespace op
 }  // namespace mxnet
 #endif

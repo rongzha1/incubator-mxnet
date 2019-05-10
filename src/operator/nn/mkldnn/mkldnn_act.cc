@@ -84,6 +84,11 @@ mkldnn::eltwise_forward::primitive_desc GetActFwdDescImpl(
   auto prop = is_train ? mkldnn::prop_kind::forward_training :
                          mkldnn::prop_kind::forward_scoring;
   auto desc = mkldnn::eltwise_forward::desc(prop, alg, data_md, 0.0f);
+  for(int i = 0; i < data_md.data.ndims-1; i++) { 
+    LOG(INFO)<<" desc.data.format_kind "<< data_md.data.format_kind
+             <<" stride i "<< i << " is "<< data_md.data.format_desc.blocking.strides[i];
+  }
+
   return mkldnn::eltwise_forward::primitive_desc(desc, cpu_engine);
 }
 
@@ -120,16 +125,24 @@ MKLDNNActForward &GetActForward(const ActivationParam& param,
   static MX_THREAD_LOCAL std::unordered_map<MKLDNNActSignature, MKLDNNActForward, OpHash> fwds;
 #endif
   MKLDNNActSignature key(param);
+
   key.AddSign(ctx.is_train);
   key.AddSign(param.act_type);
   key.AddSign(in_data);
-
+  LOG(INFO)<<"fwds size"<< fwds.size();
+#if 0  
   auto it = fwds.find(key);
   if (it == fwds.end()) {
     MKLDNNActForward fwd(param, ctx.is_train, in_data, in_mem);
     it = AddToCache(&fwds, key, fwd);
   }
   return it->second;
+  #endif 
+//  static MKLDNNActForward fwd(param, ctx.is_train, in_data, in_mem);
+  static std::shared_ptr<MKLDNNActForward> ptrMKLDNNActForward;
+  ptrMKLDNNActForward = std::make_shared<MKLDNNActForward>(param, ctx.is_train, in_data, in_mem);
+  return *ptrMKLDNNActForward;
+//  return fwd;
 }
 
 void MKLDNNActivationForward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
