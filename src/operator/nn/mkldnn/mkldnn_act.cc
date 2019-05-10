@@ -131,12 +131,6 @@ MKLDNNActForward &GetActForward(const ActivationParam& param,
     it = AddToCache(&fwds, key, fwd);
   }
   return it->second;
-#if 0
-  static std::shared_ptr<MKLDNNActForward> ptrMKLDNNActForward;
-  ptrMKLDNNActForward = std::make_shared<MKLDNNActForward>(param, ctx.is_train, in_data, in_mem);
-  return *ptrMKLDNNActForward;
-#endif
-  //  return fwd;
 }
 
 void MKLDNNActivationForward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
@@ -164,11 +158,9 @@ void MKLDNNActivationForward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
 static mkldnn::eltwise_backward::primitive_desc GetActBwdDescImpl(
     const ActivationParam &param, const mkldnn::memory &input_mem,
     const mkldnn::memory &diff_dst_memory, int dtype) {
-#if 0    
-  mkldnn::memory::primitive_desc data_mpd = input_mem.get_primitive_desc();
-  mkldnn::memory::desc data_md = data_mpd.desc();
-  mkldnn::memory::desc diff_md = diff_dst_memory.get_primitive_desc().desc();
-  auto cpu_engine = data_mpd.get_engine();
+  mkldnn::memory::desc data_md = input_mem.get_desc();
+  mkldnn::memory::desc diff_md = diff_dst_memory.get_desc();
+  auto cpu_engine = input_mem.get_engine();
   auto alg = GetMKLDNNActAlgo(param);
 
   MSHADOW_REAL_TYPE_SWITCH(dtype, DType, {
@@ -189,8 +181,6 @@ static mkldnn::eltwise_backward::primitive_desc GetActBwdDescImpl(
   mkldnn::eltwise_backward::primitive_desc bw_pdesc(bw_desc, cpu_engine,
                                                     fw_pdesc);
   return bw_pdesc;
-#endif
-  LOG(FATAL)<<"mkldnnv1.0 GetActBwdDescImpl";
 }
 
 class MKLDNNActBackward {
@@ -210,27 +200,22 @@ class MKLDNNActBackward {
   void SetNewMem(const mkldnn::memory &data,
                  const mkldnn::memory &diff_dst_memory,
                  const mkldnn::memory &diff_src_memory) {
-#if 0
     if (this->bwd != nullptr) {
       this->data->set_data_handle(data.get_data_handle());
       this->diff_dst_memory->set_data_handle(diff_dst_memory.get_data_handle());
       this->diff_src_memory->set_data_handle(diff_src_memory.get_data_handle());
     } else {
       this->data = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-          data.get_primitive_desc(), data.get_data_handle()));
+          data.get_desc(), data.get_engine(), data.get_data_handle()));
       this->diff_dst_memory = std::shared_ptr<mkldnn::memory>(
-          new mkldnn::memory(diff_dst_memory.get_primitive_desc(),
+          new mkldnn::memory(diff_dst_memory.get_desc(), diff_dst_memory.get_engine(),
                              diff_dst_memory.get_data_handle()));
       this->diff_src_memory = std::shared_ptr<mkldnn::memory>(
-          new mkldnn::memory(diff_src_memory.get_primitive_desc(),
+          new mkldnn::memory(diff_src_memory.get_desc(), diff_src_memory.get_engine(),
                              diff_src_memory.get_data_handle()));
       this->bwd = std::shared_ptr<mkldnn::eltwise_backward>(
-          new mkldnn::eltwise_backward(
-              this->pd, mkldnn::primitive::at(*this->data),
-              *this->diff_dst_memory, *this->diff_src_memory));
+          new mkldnn::eltwise_backward(this->pd));
     }
-#endif
-        LOG(FATAL)<<"mkldnnv1.0 SetNewMem";
   }
 
   const inline mkldnn::eltwise_backward &GetBwd() const { return *bwd; }
@@ -241,7 +226,6 @@ static inline MKLDNNActBackward &GetActBackward(const ActivationParam &param,
                                                 const NDArray &in_data,
                                                 const NDArray &out_grad,
                                                 const mkldnn::memory &in_mem) {
-#if 0
 #if DMLC_CXX11_THREAD_LOCAL
   static thread_local std::unordered_map<MKLDNNActSignature, MKLDNNActBackward, OpHash> bwds;
 #else
@@ -257,8 +241,6 @@ static inline MKLDNNActBackward &GetActBackward(const ActivationParam &param,
     it = AddToCache(&bwds, key, bwd);
   }
   return it->second;
-#endif
-      LOG(FATAL)<<"mkldnnv1.0 GetActBackward";
 }
 
 // For backward relu activation, it's okay to pass "out_data" as "in_data" to this
@@ -266,7 +248,6 @@ static inline MKLDNNActBackward &GetActBackward(const ActivationParam &param,
 void MKLDNNActivationBackward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
                               const NDArray &out_grad, const NDArray &in_data,
                               const OpReqType &req, const NDArray &in_grad) {
-#if 0
   if (req == kNullOp) {
     return;
   }
@@ -285,19 +266,20 @@ void MKLDNNActivationBackward(const nnvm::NodeAttrs& attrs, const OpContext &ctx
   auto input_mem = in_buffer.GetMKLDNNData();
   // We need to make sure the two inputs to eltwise_backward has the same memory
   // descriptor. Otherwise, the perf will suffer.
-  if (input_mem->get_primitive_desc() != diff_dst_memory->get_primitive_desc())
-    input_mem = in_buffer.GetMKLDNNDataReorder(diff_dst_memory->get_primitive_desc());
+  if (input_mem->get_desc() != diff_dst_memory->get_desc())
+    input_mem = in_buffer.GetMKLDNNDataReorder(diff_dst_memory->get_desc());
   MKLDNNActBackward &bwd =
       GetActBackward(param, ctx, in_buffer, out_buffer, *input_mem);
   MKLDNNStream *stream = MKLDNNStream::Get();
   mkldnn_output_t diff_src_memory =
-      CreateMKLDNNMem(in_grad, bwd.pd.diff_src_primitive_desc(), req);
+      CreateMKLDNNMem(in_grad, bwd.pd.diff_src_desc(), req);
   bwd.SetNewMem(*input_mem, *diff_dst_memory, *diff_src_memory.second);
   stream->RegisterPrim(bwd.GetBwd());
+  stream->RegisterArgs({ { MKLDNN_ARG_SRC, *input_mem },
+              { MKLDNN_ARG_DIFF_DST, *diff_dst_memory },
+              { MKLDNN_ARG_DIFF_SRC, *diff_src_memory.second } });
   CommitOutput(in_grad, diff_src_memory);
   stream->Submit();
-#endif
-        LOG(FATAL)<<"mkldnnv1.0 MKLDNNActivationBackward";
 }
 
 }  // namespace op
