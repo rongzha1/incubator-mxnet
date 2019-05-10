@@ -585,7 +585,6 @@ class MKLDNNMemory {
       if(i == desc.data.ndims-1) {
         rslt = false;
       }
-    LOG(INFO)<<"ndim "<< desc.data.ndims <<" i "<<i <<" mkldnn_blocked "<< (desc.data.format_kind == mkldnn_blocked ) << " stride "<< desc.data.format_desc.blocking.strides[i] << " i+1 "<<desc.data.format_desc.blocking.strides[i+1];
     }
     LOG(INFO)<<"mkldnnv1.0 IsMKLDNN return "<< rslt;
     return rslt;

@@ -7370,7 +7370,7 @@ def test_op_all_names_monitor():
 
 @with_seed()
 def test_activation():
-    shapes = [(4,), (9, 10), (9, 10, 10), (1, 9, 10, 10)]
+    shapes = [(4,), (9, 10), (9, 10), (9, 10, 10), (1, 9, 10, 10)]
     dtype_l = [np.float32]
     #dtype_l = [np.float64, np.float32, np.float16]
     rtol_l = [1e-7, 1e-6, 1e-2]

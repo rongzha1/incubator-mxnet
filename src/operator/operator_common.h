@@ -534,7 +534,6 @@ class OpSignature {
     hash = hash * 2 + desc.data.dims[i];
     eles.push_back(desc.data.dims[i]);
     }
-    #if 0
     switch(desc.data.format_kind) {
     case mkldnn_blocked:
       for (int i = 0; i < desc.data.ndims; i++) {
@@ -560,8 +559,7 @@ class OpSignature {
      // nothing need to add
       break;
     }
-    #endif
-    LOG(INFO)<<"mkldnnv1.0 need to add format TODO";
+    LOG(INFO)<<"mkldnnv1.0 need to add MKLDNN format";
   }
 #endif
 
