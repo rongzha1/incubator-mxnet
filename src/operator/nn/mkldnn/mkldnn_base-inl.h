@@ -405,27 +405,75 @@ enum OutDataOp {
 typedef std::pair<OutDataOp, mkldnn::memory *> mkldnn_output_t;
 void MKLDNNCopy(const mkldnn::memory &mem, const mkldnn::memory* this_mem);
 
+static inline bool SameFormat(
+    mkldnn::memory::desc desc_a, mkldnn::memory::desc desc_b) {
+  bool rslt = false;
+  int i = 0;
+  int j = 0;
+  if(desc_a.data.format_kind == desc_b.data.format_kind
+     && desc_a.data.ndims == desc_b.data.ndims) {
+    switch(desc_a.data.format_kind) {
+      case mkldnn_blocked:
+        for (i = 0; i < desc_a.data.ndims; i++) {
+          if (desc_a.data.format_desc.blocking.strides[i]
+         != desc_b.data.format_desc.blocking.strides[i]) {
+            break;
+      }
+        }
+    if(i != desc_a.data.ndims) {
+          break;
+    }
+        for (i = 0; i < desc_a.data.format_desc.blocking.inner_nblks; i++) {
+          if (desc_a.data.format_desc.blocking.inner_blks[i]
+         != desc_b.data.format_desc.blocking.inner_blks[i]) {
+            break; 
+      }
+        }
+    if(i != desc_a.data.format_desc.blocking.inner_nblks) {
+          break;
+    }
+    rslt = true;
+      break;
+      case mkldnn_format_kind_wino:
+        if (desc_a.data.format_desc.wino_desc.wino_format
+         == desc_b.data.format_desc.wino_desc.wino_format) {
+          rslt = true;
+      }
+      break;
+      case mkldnn_format_kind_rnn_packed:
+        if (desc_a.data.format_desc.rnn_packed_desc.format
+         == desc_b.data.format_desc.rnn_packed_desc.format) {
+          rslt = true;
+        }
+    break;
+      default:
+       // nothing need to add
+       rslt = false;
+      break;
+    }
+  }
+  LOG(INFO)<<"mkldnnv1.0 SameFormat return "<< rslt;
+  return rslt;
+}
+
 /*
- * Here we want to get MKLDNN memory whose primitive desc is exactly the same as
+ * Here we want to get MKLDNN memory whose desc is exactly the same as
  * the given one. operator== can't guarantee that. == can return true even if
  * the formats are different. I need to double check its format.
  */
 static inline mkldnn::memory *GetMKLDNNExact(
     const mkldnn::memory *mem, mkldnn::memory::desc desc) {
-  LOG(INFO)<<"mkldnnv1.0 GetMKLDNNExact need add other branch";
-    return const_cast<mkldnn::memory *>(mem);
-#if 0
-  mkldnn::memory::primitive_desc src_desc = mem->get_primitive_desc();
-  if (desc == src_desc && desc.desc().data.format == src_desc.desc().data.format) {
+  mkldnn::memory::desc src_desc = mem->get_desc();
+  if (desc == src_desc && SameFormat(desc, src_desc)) {
+    LOG(INFO)<<"mkldnnv1.0 GetMKLDNNExact return same format";
     return const_cast<mkldnn::memory *>(mem);
   } else {
+    LOG(INFO)<<"mkldnnv1.0 GetMKLDNNExact return different format";
     std::shared_ptr<mkldnn::memory> ret(new mkldnn::memory(
-            desc, mem->get_data_handle()));
+            desc, CpuEngine::Get()->get_engine(), mem->get_data_handle()));
     MKLDNNStream::Get()->RegisterMem(ret);
     return ret.get();
   }
-#endif
-
 }
 
 /*
@@ -477,6 +525,9 @@ const mkldnn::memory *GetWeights(const NDArray &arr,
 
 mkldnn_format_tag_t GetDefaultFormat(const mkldnn::memory::desc &desc);
 mkldnn_format_tag_t GetDefaultFormat(int num_dims);
+
+bool IsDefaultFormat(const mkldnn::memory::desc &desc);
+
 mkldnn::memory::desc GetDesc(mkldnn::memory::desc desc,
                                                 mkldnn_format_tag_t format);
 
@@ -571,9 +622,6 @@ class MKLDNNMemory {
   }
 
   bool IsMKLDNN() const {
-#if 0   
-    return GetFormat() != GetDefaultFormat();
-#endif
     bool rslt = true;
     if(desc.data.format_kind == mkldnn_blocked ) {
       int i = 0;

@@ -712,28 +712,19 @@ mkldnn::memory *NDArray::CreateMKLDNNData(const mkldnn::memory::desc &desc) {
     LOG(FATAL) << "The size of NDArray doesn't match the requested MKLDNN memory desc "<<desc.get_size()<< " vs "<<shape().Size() * GetTypeSize(dtype_);
     return nullptr;
   }
-  
-  LOG(INFO)<<"mkldnnv1.0 CreateMKLDNNData need add other branch";
-   ptr_->SetMKLMem(shape_, dtype_);
-   MKLDNNStream::Get()->RegisterMem(ptr_->mkl_mem_->GetMem());
-   return GetMKLDNNExact(ptr_->mkl_mem_->GetRaw(), desc);
-#if 0
-  mkldnn::memory::primitive_desc _desc = desc;
-  mkldnn_memory_format_t required_format = _desc.desc().data.format;
-  mkldnn_memory_format_t def_format = GetDefaultFormat(_desc.desc());
-  // If the required format is a default format, we don't need to worry about the shape.
-  // If the shape isn't the same, it actually implicitly reshapes data.
-  if (required_format == def_format && !IsView()) {
+  bool isDefaultFormat = IsDefaultFormat(desc);
+  if (isDefaultFormat && !IsView()) {
     ptr_->SetMKLMem(shape_, dtype_);
     MKLDNNStream::Get()->RegisterMem(ptr_->mkl_mem_->GetMem());
+    LOG(INFO)<<"mkldnnv1.0 CreateMKLDNNData dft format not view";
     return GetMKLDNNExact(ptr_->mkl_mem_->GetRaw(), desc);
-  } else if (required_format == def_format) {
+  } else if (isDefaultFormat) {
     ptr_->CheckAndAlloc();
     CHECK(ptr_->shandle.dptr);
     // When this is a view and a user wants the default layout, we can simply
     // create a new mkldnn memory that points to the right memory.
     std::shared_ptr<mkldnn::memory> mem(new mkldnn::memory(
-            desc, static_cast<char *>(ptr_->shandle.dptr) + byte_offset_));
+         desc, CpuEngine::Get()->get_engine(), static_cast<char *>(ptr_->shandle.dptr) + byte_offset_));
     MKLDNNStream::Get()->RegisterMem(mem);
     return mem.get();
   } else if (IsView()) {
@@ -744,19 +735,20 @@ mkldnn::memory *NDArray::CreateMKLDNNData(const mkldnn::memory::desc &desc) {
     ptr_->Reorder2Default();
     return nullptr;
   }
-  if (ptr_->mkl_mem_)
-    CHECK(ptr_->mkl_mem_->GetDataHandle() == ptr_->shandle.dptr);
-  if (ptr_->mkl_mem_ && ptr_->mkl_mem_->GetPrimitiveDesc() == desc) {
-    MKLDNNStream::Get()->RegisterMem(ptr_->mkl_mem_->GetMem());
-    return GetMKLDNNExact(ptr_->mkl_mem_->GetRaw(), desc);
-  }
 
-  CHECK(ptr_->shandle.size >= desc.get_size());
-  ptr_->CheckAndAlloc(desc.get_size());
-  ptr_->mkl_mem_.reset(new MKLDNNMemory(desc, ptr_->shandle.dptr));
-  MKLDNNStream::Get()->RegisterMem(ptr_->mkl_mem_->GetMem());
-  return ptr_->mkl_mem_->GetRaw();
-#endif
+   if (ptr_->mkl_mem_)
+     CHECK(ptr_->mkl_mem_->GetDataHandle() == ptr_->shandle.dptr);
+   if (ptr_->mkl_mem_ && ptr_->mkl_mem_->GetDesc() == desc) {
+     MKLDNNStream::Get()->RegisterMem(ptr_->mkl_mem_->GetMem());
+     return GetMKLDNNExact(ptr_->mkl_mem_->GetRaw(), desc);
+   }
+
+   CHECK(ptr_->shandle.size >= desc.get_size());
+   ptr_->CheckAndAlloc(desc.get_size());
+   ptr_->mkl_mem_.reset(new MKLDNNMemory(desc, ptr_->shandle.dptr));
+   MKLDNNStream::Get()->RegisterMem(ptr_->mkl_mem_->GetMem());
+   return ptr_->mkl_mem_->GetRaw();
+ 
 }
 
 void NDArray::UpdateMKLDNNMemDesc(mkldnn::memory::format_tag format) {

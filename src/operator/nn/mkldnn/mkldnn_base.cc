@@ -442,6 +442,23 @@ mkldnn_format_tag_t GetDefaultFormat(const mkldnn::memory::desc &desc) {
     LOG(FATAL)<<"mkldnnv1.0 GetDefaultFormat";
 }
 
+bool IsDefaultFormat(const mkldnn::memory::desc &desc) {
+  bool rslt = false;
+  if (desc.data.format_kind == mkldnn_blocked ) {
+    int i = 0;
+    for (i = 0; i < desc.data.ndims-1; i++) {
+      if (desc.data.format_desc.blocking.strides[i] < desc.data.format_desc.blocking.strides[i + 1]) {
+        break;
+      }
+    }
+    if (i == desc.data.ndims-1) {
+      rslt = true;
+    }
+  }
+  LOG(INFO)<<"mkldnnv1.0 IsDefaultFormat return "<< rslt;
+  return rslt;
+}
+
 mkldnn::memory::desc GetDesc(mkldnn::memory::desc desc,
                                                 mkldnn_format_tag_t format) {
 #if 0
