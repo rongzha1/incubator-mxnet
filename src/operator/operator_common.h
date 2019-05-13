@@ -536,15 +536,17 @@ class OpSignature {
     }
     switch(desc.data.format_kind) {
     case mkldnn_blocked:
+    hash = hash * 2 + desc.data.ndims;
+    eles.push_back(desc.data.ndims);
       for (int i = 0; i < desc.data.ndims; i++) {
       hash = hash * 2 + desc.data.format_desc.blocking.strides[i];
       eles.push_back(desc.data.format_desc.blocking.strides[i]);
       }
+    hash = hash * 2 + desc.data.format_desc.blocking.inner_nblks;
+    eles.push_back(desc.data.format_desc.blocking.inner_nblks);
       for (int i = 0; i < desc.data.format_desc.blocking.inner_nblks; i++) {
       hash = hash * 2 + desc.data.format_desc.blocking.inner_blks[i];
-      hash = hash * 2 + desc.data.format_desc.blocking.inner_idxs[i];
       eles.push_back(desc.data.format_desc.blocking.inner_blks[i]);
-      eles.push_back(desc.data.format_desc.blocking.inner_idxs[i]);
       }
       break;
     case mkldnn_format_kind_wino:
@@ -647,4 +649,3 @@ class ParamOpSign: public OpSignature {
 }  // namespace op
 }  // namespace mxnet
 #endif  // MXNET_OPERATOR_OPERATOR_COMMON_H_
-
