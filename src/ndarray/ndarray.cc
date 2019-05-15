@@ -654,8 +654,6 @@ const mkldnn::memory *NDArray::GetMKLDNNData() const {
     // SetMKLMem may mess up mkl_mem_.
     return ptr_->mkl_mem_->GetRaw();
   } else if (is_view) {
-    LOG(FATAL)<<"mkldnnv1.0 GetMKLDNNData";
-#if 0
     // If this is a view, we can't create a MKLDNN memory for the chunk
     // because we don't have the complete data type and shape information for
     // the chunk.
@@ -664,17 +662,14 @@ const mkldnn::memory *NDArray::GetMKLDNNData() const {
     mkldnn::memory::dims dims(shape().ndim());
     for (size_t i = 0; i < dims.size(); i++)
       dims[i] = shape()[i];
-    mkldnn::memory::format cpp_format = static_cast<mkldnn::memory::format>(
+    mkldnn::memory::format_tag cpp_format = static_cast<mkldnn::memory::format_tag>(
         GetDefaultFormat(shape().ndim()));
     mkldnn::memory::data_type cpp_type = get_mkldnn_type(dtype_);
     mkldnn::memory::desc data_md(dims, cpp_type, cpp_format);
-    mkldnn::memory::primitive_desc new_pd(data_md,
-                                          CpuEngine::Get()->get_engine());
-
-    std::shared_ptr<mkldnn::memory> ret(new mkldnn::memory(new_pd, off_addr));
+    
+    std::shared_ptr<mkldnn::memory> ret(new mkldnn::memory(data_md, CpuEngine::Get()->get_engine(), off_addr));
     MKLDNNStream::Get()->RegisterMem(ret);
     return ret.get();
-#endif
   } else {
     // If this isn't a view, we can create a MKLDNN memory and store it in the
     // chunk.
@@ -716,7 +711,6 @@ mkldnn::memory *NDArray::CreateMKLDNNData(const mkldnn::memory::desc &desc) {
   if (isDefaultFormat && !IsView()) {
     ptr_->SetMKLMem(shape_, dtype_);
     MKLDNNStream::Get()->RegisterMem(ptr_->mkl_mem_->GetMem());
-    LOG(INFO)<<"mkldnnv1.0 CreateMKLDNNData dft format not view";
     return GetMKLDNNExact(ptr_->mkl_mem_->GetRaw(), desc);
   } else if (isDefaultFormat) {
     ptr_->CheckAndAlloc();

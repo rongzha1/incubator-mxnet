@@ -138,8 +138,11 @@ static inline bool SupportMKLDNN(const NDArray &input) {
 }
 
 static inline bool MKLDNNEnvSet() {
-  static bool is_mkldnn_enabled = dmlc::GetEnv("MXNET_MKLDNN_ENABLED", true);
-  return is_mkldnn_enabled;
+    // comment following lines  to simplify mkldnn unittest
+    bool is_mkldnn_enabled = dmlc::GetEnv("MXNET_MKLDNN_ENABLED", true);
+    LOG(INFO) << "change for mkldnnv1.0 quick test, need recover when 1.0 upgrade done, return " << is_mkldnn_enabled;   
+     return is_mkldnn_enabled;
+    return dmlc::GetEnv("MXNET_MKLDNN_ENABLED", true);
 }
 
 static inline int GetMKLDNNCacheSize() {
@@ -378,18 +381,17 @@ class MKLDNNStream {
    * might want to separate mkldnn execution and memory cleanup.
    */
   void Submit(bool cleanup = true) {
-    
     if (!net.empty()) {
-    for(size_t i = 0; i < net.size(); i++) {
-      net.at(i).execute(s, net_args.at(i));
-    }
-    net.clear();
-    net_args.clear();
+      CHECK(net.size() == net_args.size());
+      for(size_t i = 0; i < net.size(); i++) {
+        net.at(i).execute(s, net_args.at(i));
+      }
+      net.clear();
+      net_args.clear();
     }
     if (cleanup)
       Cleanup();
   }
-
   void Cleanup() {
     mem_holder.clear();
     TmpMemMgr::Get()->Reset();
