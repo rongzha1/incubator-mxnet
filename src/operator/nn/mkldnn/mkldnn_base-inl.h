@@ -138,11 +138,11 @@ static inline bool SupportMKLDNN(const NDArray &input) {
 }
 
 static inline bool MKLDNNEnvSet() {
-    // comment following lines  to simplify mkldnn unittest
+    // comment following lines static to simplify mkldnn unittest
+    // static bool is_mkldnn_enabled = dmlc::GetEnv("MXNET_MKLDNN_ENABLED", true);
     bool is_mkldnn_enabled = dmlc::GetEnv("MXNET_MKLDNN_ENABLED", true);
     LOG(INFO) << "change for mkldnnv1.0 quick test, need recover when 1.0 upgrade done, return " << is_mkldnn_enabled;   
      return is_mkldnn_enabled;
-    return dmlc::GetEnv("MXNET_MKLDNN_ENABLED", true);
 }
 
 static inline int GetMKLDNNCacheSize() {
