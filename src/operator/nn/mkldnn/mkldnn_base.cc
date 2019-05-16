@@ -55,32 +55,29 @@ void *AlignMem(void *mem, size_t size, size_t alignment, size_t *space) {
 }
 
 mkldnn::memory *TmpMemMgr::Alloc(const mkldnn::memory::desc &desc) {
-#if 0
   // We need to include the size of the memory used for alignment.
-  this->est_size += pd.get_size() + alignment;
-  void *mem = AlignMem(this->curr_mem, pd.get_size(), alignment, &this->curr_size);
+  this->est_size += desc.get_size() + alignment;
+  void *mem = AlignMem(this->curr_mem, desc.get_size(), alignment, &this->curr_size);
   if (mem) {
     // The memory is allocated from the temporary memory space in the
     // operator. It'll only become invalid after we exit from the operator.
-    mkldnn_mem_ptr ret(new mkldnn::memory(pd, mem));
+    mkldnn_mem_ptr ret(new mkldnn::memory(desc, CpuEngine::Get()->get_engine(), mem));
     MKLDNNStream::Get()->RegisterMem(ret);
     CHECK_EQ(mem, mem);
-    this->curr_size -= pd.get_size();
-    this->curr_mem = static_cast<char *>(mem) + pd.get_size();
+    this->curr_size -= desc.get_size();
+    this->curr_mem = static_cast<char *>(mem) + desc.get_size();
     return ret.get();
   } else {
     // If curr_mem has been initialized and we still reach here. It means
     // the current allocated memory isn't enough.
     if (this->curr_mem && dmlc::GetEnv("MXNET_MKLDNN_DEBUG", false)) {
-      LOG(WARNING) << "Allocate " << pd.get_size()
+      LOG(WARNING) << "Allocate " << desc.get_size()
           << " bytes with malloc directly";
     }
-    mkldnn_mem_ptr ret(new mkldnn::memory(pd));
+    mkldnn_mem_ptr ret(new mkldnn::memory(desc, CpuEngine::Get()->get_engine()));
     MKLDNNStream::Get()->RegisterMem(ret);
     return ret.get();
   }
-#endif
-  LOG(FATAL)<<"mkldnnv1.0 Alloc";
 }
 
 void MKLDNNCopy(const mkldnn::memory &mem, const mkldnn::memory* this_mem) {
@@ -171,14 +168,11 @@ void MKLDNNCopy(const mkldnn::memory &mem, const mkldnn::memory* this_mem) {
 bool CanWriteTo(const NDArray &out_arr,
                 const NDArray &in_arr,
                 const mkldnn::memory::desc &desc) {
-#if 0                
   auto in_mem = in_arr.GetMKLDNNData();
   bool add_same = in_mem->get_data_handle() == out_arr.GetMKLDNNData()->get_data_handle();
-  bool pdesc_same = out_arr.GetMKLDNNData()->get_primitive_desc() == desc &&
-      in_mem->get_primitive_desc() == desc;
+  bool pdesc_same = out_arr.GetMKLDNNData()->get_desc() == desc &&
+      in_mem->get_desc() == desc;
   return add_same && pdesc_same;
-#endif
-  LOG(FATAL)<<"mkldnnv1.0 CanWriteTo";
 }
 
 mkldnn_output_t CreateMKLDNNMem(const NDArray &out_arr,

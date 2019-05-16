@@ -72,7 +72,6 @@ inline static t_bn_f_pdesc _GetFwd(const mkldnn::memory &data_mem,
   auto data_md   = data_mem.get_desc();
   auto engine     = CpuEngine::Get()->get_engine();
   bn_flg flg = static_cast<bn_flg>(flags);
-  LOG(INFO)<<"mkldnnv1.0 _GetFwd flg is "<<mkldnn::convert_to_c(flg);
   if (is_train) {
     t_bn_f_desc bnFwd_desc(prop_kind::forward_training, data_md, eps, flg);
     return t_bn_f_pdesc(bnFwd_desc, engine);
@@ -87,16 +86,13 @@ inline static t_bn_b_pdesc _GetBwd(const mkldnn::memory &data_mem,
                                    const mkldnn::memory &diff_mem,
                                    DType eps,
                                    unsigned flags) {
-#if 0
-  auto data_mpd   = data_mem.get_primitive_desc();
-  auto data_md    = data_mpd.desc();
-  auto diff_mpd   = diff_mem.get_primitive_desc();
-  auto diff_md    = diff_mpd.desc();
+  auto data_md   = data_mem.get_desc();
+  auto diff_md   = diff_mem.get_desc();
   auto engine     = CpuEngine::Get()->get_engine();
+  bn_flg flg = static_cast<bn_flg>(flags);
 
-  t_bn_b_desc  bnBwd_desc(mkldnn::prop_kind::backward, diff_md, data_md, eps, flags);
+  t_bn_b_desc  bnBwd_desc(mkldnn::prop_kind::backward, diff_md, data_md, eps, flg);
   return t_bn_b_pdesc(bnBwd_desc, engine, _GetFwd(data_mem, true, eps, flags));
-  #endif
 }
 
 typedef ParamOpSign<BatchNormParam> MKLDNNBNSignature;
@@ -136,7 +132,7 @@ class MKLDNNBNForward {
   void SetDataHandle(const NDArray &data, const NDArray &mean,
                      const NDArray &var, const mkldnn::memory &out) {
     auto _data = data.GetMKLDNNData();
-	auto engine = CpuEngine::Get()->get_engine();
+  auto engine = CpuEngine::Get()->get_engine();
     if (data_m) {
       data_m->set_data_handle(_data->get_data_handle());
     } else {
@@ -317,22 +313,19 @@ class MKLDNNBNBackward {
   void SetDataHandle(const mkldnn::memory &data, const mkldnn::memory &diff,
                      const NDArray &mean, const mkldnn::memory &var,
                      const mkldnn::memory &gradi) {
-#if 0                     
     auto mean_ptr = mean.data().dptr_;
+  auto engine = CpuEngine::Get()->get_engine();
     if (bwd == nullptr) {
-      data_m.reset(new mkldnn::memory(data.get_primitive_desc(),
+      data_m.reset(new mkldnn::memory(data.get_desc(), engine,
                                       data.get_data_handle()));
-      diff_m.reset(new mkldnn::memory(diff.get_primitive_desc(),
+      diff_m.reset(new mkldnn::memory(diff.get_desc(), engine,
                                       diff.get_data_handle()));
-      gradi_m.reset(new mkldnn::memory(gradi.get_primitive_desc(),
+      gradi_m.reset(new mkldnn::memory(gradi.get_desc(), engine,
                                        gradi.get_data_handle()));
-      mean_m.reset(new mkldnn::memory(pd.mean_primitive_desc(), mean_ptr));
-      var_m.reset(new mkldnn::memory(pd.variance_primitive_desc(),
+      mean_m.reset(new mkldnn::memory(pd.mean_desc(),  engine, mean_ptr));
+      var_m.reset(new mkldnn::memory(pd.variance_desc(), engine,
                                      var.get_data_handle()));
-      bwd.reset(new mkldnn::batch_normalization_backward(
-          pd, *data_m, mkldnn::primitive::at(*mean_m),
-          mkldnn::primitive::at(*var_m), *diff_m, *weight_m, *gradi_m,
-          *gradw_m));
+      bwd.reset(new mkldnn::batch_normalization_backward(pd));
     } else {
       data_m->set_data_handle(data.get_data_handle());
       diff_m->set_data_handle(diff.get_data_handle());
@@ -340,7 +333,6 @@ class MKLDNNBNBackward {
       mean_m->set_data_handle(mean_ptr);
       var_m->set_data_handle(var.get_data_handle());
     }
-#endif
   }
   const mkldnn::batch_normalization_backward &GetBwd() const { return *bwd; }
 };
@@ -376,7 +368,6 @@ void MKLDNNBatchNormBackward(const OpContext &ctx, const BatchNormParam &param,
                              const std::vector<OpReqType>  &req,
                              const std::vector<NDArray>    &in_grad,
                              const std::vector<NDArray>    &aux_states) {
-#if 0
   TmpMemMgr::Get()->Init(ctx.requested[batchnorm::kTempSpace]);
   CHECK_EQ(out_grad.size(), 1U);
   CHECK_EQ(in_data.size(), 3U);
@@ -401,14 +392,16 @@ void MKLDNNBatchNormBackward(const OpContext &ctx, const BatchNormParam &param,
   auto diff_mem  = diff.GetMKLDNNData();
   // MKLDNN batchnorm should run on special layouts. If one of them isn't, we
   // should reorder them.
+#if 0
   if (data.IsDefaultData())
-    data_mem = data.GetMKLDNNDataReorder(diff_mem->get_primitive_desc());
+    data_mem = data.GetMKLDNNDataReorder(diff_mem->get_desc());
   else if (diff.IsDefaultData())
-    diff_mem = diff.GetMKLDNNDataReorder(data_mem->get_primitive_desc());
+    diff_mem = diff.GetMKLDNNDataReorder(data_mem->get_desc());
+#endif
   auto &bwd = GetBNBackward<DType>(param, ctx, data, *data_mem, diff, *diff_mem, flags);
-  auto gradi_mem = const_cast<NDArray &>(gradIn).CreateMKLDNNData(data_mem->get_primitive_desc());
+  auto gradi_mem = const_cast<NDArray &>(gradIn).CreateMKLDNNData(data_mem->get_desc());
 
-  if (flags & use_scale_shift) {
+  if (flags & static_cast<int>(bn_flg::use_scale_shift)) {
     const NDArray &gamma    = in_data[batchnorm::kGamma];
     const NDArray &beta     = in_data[batchnorm::kBeta];
     DType *weight_buf = reinterpret_cast<DType *>(bwd.GetWeight().get_data_handle());
@@ -424,16 +417,25 @@ void MKLDNNBatchNormBackward(const OpContext &ctx, const BatchNormParam &param,
       weight_buf[channels_ + i] = (beta.data().dptr<DType>())[i];  // bias
     }
 
+  std::unordered_map<int, memory> args = {
+    {MKLDNN_ARG_SRC, *data_mem},
+    {MKLDNN_ARG_SCALE_SHIFT, bwd.GetWeight()},
+    {MKLDNN_ARG_DIFF_SCALE_SHIFT, bwd.GetGradw()},
+    {MKLDNN_ARG_DIFF_DST, (*diff.GetMKLDNNData())},
+    {MKLDNN_ARG_DIFF_SRC, (*gradIn.GetMKLDNNData())},
+  };
+ 
     // training but no input mean and variance
     if (ctx.is_train && !param.use_global_stats) {
       DType* moving_mean_ptr  = reinterpret_cast<DType *>(moving_mean.data().dptr<DType>());
       DType* moving_var_ptr   = reinterpret_cast<DType *>(moving_var.data().dptr<DType>());
       DType* out_mean_ptr     = reinterpret_cast<DType *>(out_mean.data().dptr<DType>());
       DType* out_var_ptr      = reinterpret_cast<DType *>(out_var.data().dptr<DType>());
-      mkldnn::memory var_mem(bwd.pd.variance_primitive_desc());
+      mkldnn::memory var_mem(bwd.pd.variance_desc(), CpuEngine::Get()->get_engine());
       DType *tmp_var_ptr = reinterpret_cast<DType *>(var_mem.get_data_handle());
 
       DType minus_mom = (1.0f - param.momentum);
+        
       for (int i = 0; i < channels_; i++) {
         moving_mean_ptr[i] = moving_mean_ptr[i] * param.momentum +
                              out_mean_ptr[i] * minus_mom;
@@ -443,11 +445,19 @@ void MKLDNNBatchNormBackward(const OpContext &ctx, const BatchNormParam &param,
                             variance * minus_mom;
       }
       bwd.SetDataHandle(*data_mem, *diff_mem, out_mean, var_mem, *gradi_mem);
+    
+      args.insert({MKLDNN_ARG_MEAN, *(out_mean.GetMKLDNNData())});
+      args.insert({MKLDNN_ARG_VARIANCE, var_mem});
+
+      MKLDNNStream::Get()->RegisterArgs(args);
       MKLDNNStream::Get()->RegisterPrim(bwd.GetBwd());
       MKLDNNStream::Get()->Submit();
     } else {
       bwd.SetDataHandle(*data_mem, *diff_mem, moving_mean,
                         *moving_var.GetMKLDNNData(), *gradi_mem);
+      args.insert({MKLDNN_ARG_MEAN, *(moving_mean.GetMKLDNNData())});
+      args.insert({MKLDNN_ARG_VARIANCE, *(moving_var.GetMKLDNNData())});
+      MKLDNNStream::Get()->RegisterArgs(args);
       MKLDNNStream::Get()->RegisterPrim(bwd.GetBwd());
       MKLDNNStream::Get()->Submit();
     }
@@ -467,10 +477,10 @@ void MKLDNNBatchNormBackward(const OpContext &ctx, const BatchNormParam &param,
   } else {
     LOG(FATAL) << "MKLDNN batch normalization backward: should not reach here ...";
   }
-#endif
 }
 
 }  // namespace op
 }  // namespace mxnet
 #endif  // MXNET_USE_MKLDNN
 #endif  // MXNET_OPERATOR_NN_MKLDNN_MKLDNN_BATCH_NORM_INL_H_
+
