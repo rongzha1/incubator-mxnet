@@ -392,12 +392,10 @@ void MKLDNNBatchNormBackward(const OpContext &ctx, const BatchNormParam &param,
   auto diff_mem  = diff.GetMKLDNNData();
   // MKLDNN batchnorm should run on special layouts. If one of them isn't, we
   // should reorder them.
-#if 0
   if (data.IsDefaultData())
     data_mem = data.GetMKLDNNDataReorder(diff_mem->get_desc());
   else if (diff.IsDefaultData())
     diff_mem = diff.GetMKLDNNDataReorder(data_mem->get_desc());
-#endif
   auto &bwd = GetBNBackward<DType>(param, ctx, data, *data_mem, diff, *diff_mem, flags);
   auto gradi_mem = const_cast<NDArray &>(gradIn).CreateMKLDNNData(data_mem->get_desc());
 
@@ -483,4 +481,3 @@ void MKLDNNBatchNormBackward(const OpContext &ctx, const BatchNormParam &param,
 }  // namespace mxnet
 #endif  // MXNET_USE_MKLDNN
 #endif  // MXNET_OPERATOR_NN_MKLDNN_MKLDNN_BATCH_NORM_INL_H_
-

@@ -508,6 +508,23 @@ void NDArray::Chunk::SetMKLMem(const mxnet::TShape &shape, int dtype) {
   mkl_mem_.reset(new MKLDNNMemory(data_md, shandle.dptr));
 }
 
+bool NDArray::IsMKLDNN(mkldnn::memory::desc desc) const {
+  bool rslt = true;
+  if(desc.data.format_kind == mkldnn_blocked ) {
+    int i = 0;
+    for(i = 0; i < desc.data.ndims-1; i++) {
+      if(desc.data.format_desc.blocking.strides[i] < desc.data.format_desc.blocking.strides[i + 1]) {
+        break;
+      }
+    }
+    if(i == desc.data.ndims-1) {
+      rslt = false;
+    }
+  }
+  return rslt;
+}
+
+
 const mkldnn::memory *NDArray::GetMKLDNNData(
     const mkldnn::memory::desc &desc) const {
 #if 0
@@ -534,8 +551,7 @@ const mkldnn::memory *NDArray::GetMKLDNNData(
 
 const mkldnn::memory *NDArray::GetMKLDNNDataReorder(
     const mkldnn::memory::desc &new_desc) const {
-#if 0
-  if (new_pd.get_size() != shape().Size() * GetTypeSize(dtype_)) {
+  if (new_desc.get_size() != shape().Size() * GetTypeSize(dtype_)) {
     LOG(FATAL) << "The size of NDArray doesn't match the requested MKLDNN memory desc";
     return nullptr;
   }
@@ -544,24 +560,24 @@ const mkldnn::memory *NDArray::GetMKLDNNDataReorder(
   const mkldnn::memory *mem = GetMKLDNNData();
   // If the memory descriptor matches, it's easy.
   MKLDNNStream *stream = MKLDNNStream::Get();
-  if (mem->get_primitive_desc() == new_pd) {
-    return GetMKLDNNExact(mem, new_pd);
+  if (mem->get_desc() == new_desc) {
+    return GetMKLDNNExact(mem, new_desc);
   }
 
-  mkldnn::memory::primitive_desc _pd = new_pd;
-  mkldnn::memory::desc desc1 = mem->get_primitive_desc().desc();
-  mkldnn::memory::desc desc2 = _pd.desc();
+  mkldnn::memory::desc desc1 = mem->get_desc();
+  mkldnn::memory::desc desc2 = new_desc;
   // Now we need to determine if we should reorder the memory.
   // If both use the default formats, we think we don't need to reorder.
-  if (desc1.data.format == GetDefaultFormat(desc1) &&
-      desc2.data.format == GetDefaultFormat(desc2)) {
-    mkldnn_mem_ptr ret(new mkldnn::memory(new_pd, mem->get_data_handle()));
+  if ((!IsMKLDNN(desc1)) && (!IsMKLDNN(desc2))) {
+    mkldnn_mem_ptr ret(new mkldnn::memory(new_desc, CpuEngine::Get()->get_engine(), mem->get_data_handle()));
     stream->RegisterMem(ret);
     return ret.get();
   } else if (same_shape(desc1, desc2)) {
     // If they have the same shape, we can reorder data directly.
-    mkldnn::memory *ret = TmpMemMgr::Get()->Alloc(new_pd);
+    mkldnn::memory *ret = TmpMemMgr::Get()->Alloc(new_desc);
     stream->RegisterPrim(mkldnn::reorder(*mem, *ret));
+    stream->RegisterArgs({ { MKLDNN_ARG_FROM, *mem },
+                           { MKLDNN_ARG_TO, *ret } });
     return ret;
   } else {
     // If they have different shapes, we need to reshape the array first.
@@ -572,16 +588,16 @@ const mkldnn::memory *NDArray::GetMKLDNNDataReorder(
       required_shape[i] = desc2.data.dims[i];
     NDArray reshaped = MKLDNNDataReshape(required_shape);
     const mkldnn::memory *ret = reshaped.GetMKLDNNData();
-    if (ret->get_primitive_desc() == new_pd) {
-      return GetMKLDNNExact(ret, new_pd);
+    if (ret->get_desc() == new_desc) {
+      return GetMKLDNNExact(ret, new_desc);
     } else {
-      mkldnn::memory *ret2 = TmpMemMgr::Get()->Alloc(new_pd);
+      mkldnn::memory *ret2 = TmpMemMgr::Get()->Alloc(new_desc);
       stream->RegisterPrim(mkldnn::reorder(*ret, *ret2));
+      stream->RegisterArgs({ { MKLDNN_ARG_FROM, *ret },
+                             { MKLDNN_ARG_TO, *ret2 } });
       return ret2;
     }
   }
-#endif
-            LOG(FATAL)<<"mkldnnv1.0 GetMKLDNNDataReorder";
 }
 
 NDArray NDArray::Reorder2Default() const {
@@ -2213,4 +2229,5 @@ MXNET_REGISTER_NDARRAY_FUN(_imdecode)
 .add_argument("size", "int", "length of str_img");
 #endif
 }  // namespace mxnet
+
 

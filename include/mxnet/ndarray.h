@@ -707,6 +707,11 @@ class NDArray {
   bool IsMKLDNNData() const {
     return ptr_->IsMKLDNN();
   }
+  
+  /*
+   * Test if the desc is stored in one of special MKLDNN format.
+   */
+  bool IsMKLDNN(mkldnn::memory::desc desc) const;
   /*
    * Test if the data is stored in one of default MXNet formats.
    */
@@ -1477,4 +1482,5 @@ namespace dmlc {
 DMLC_DECLARE_TRAITS(has_saveload, mxnet::NDArray, true);
 }  // namespace dmlc
 #endif  // MXNET_NDARRAY_H_
+
 
