@@ -418,33 +418,35 @@ static inline bool SameFormat(
       case mkldnn_blocked:
         for (i = 0; i < desc_a.data.ndims; i++) {
           if (desc_a.data.format_desc.blocking.strides[i]
-         != desc_b.data.format_desc.blocking.strides[i]) {
+             != desc_b.data.format_desc.blocking.strides[i]) {
             break;
-      }
+          }
         }
-    if(i != desc_a.data.ndims) {
+        if (i != desc_a.data.ndims) {
           break;
-    }
+        }
         for (i = 0; i < desc_a.data.format_desc.blocking.inner_nblks; i++) {
-          if (desc_a.data.format_desc.blocking.inner_blks[i]
-         != desc_b.data.format_desc.blocking.inner_blks[i]) {
+          if ((desc_a.data.format_desc.blocking.inner_blks[i]
+               != desc_b.data.format_desc.blocking.inner_blks[i])
+             &&(desc_a.data.format_desc.blocking.inner_idxs[i]
+               != desc_b.data.format_desc.blocking.inner_idxs[i])) {
             break; 
-      }
+          }  
         }
-    if(i != desc_a.data.format_desc.blocking.inner_nblks) {
-          break;
-    }
-    rslt = true;
+        if(i != desc_a.data.format_desc.blocking.inner_nblks) {
+              break;
+        }
+        rslt = true;
       break;
       case mkldnn_format_kind_wino:
         if (desc_a.data.format_desc.wino_desc.wino_format
-         == desc_b.data.format_desc.wino_desc.wino_format) {
+           == desc_b.data.format_desc.wino_desc.wino_format) {
           rslt = true;
-      }
+        }
       break;
       case mkldnn_format_kind_rnn_packed:
         if (desc_a.data.format_desc.rnn_packed_desc.format
-         == desc_b.data.format_desc.rnn_packed_desc.format) {
+           == desc_b.data.format_desc.rnn_packed_desc.format) {
           rslt = true;
         }
     break;
