@@ -250,15 +250,14 @@ void CommitOutput(const NDArray &arr, const mkldnn_output_t &res) {
 }
 
 const mkldnn::memory *GetWeights(const NDArray &arr, int num_groups) {
-#if 0                
   const auto type = get_mkldnn_type(arr.dtype());
   auto tz = mkldnn::memory::dims{0};
-  auto format = mkldnn::memory::format::format_undef;
+  auto format_tag = mkldnn::memory::format_tag::undef;
   auto engine = CpuEngine::Get()->get_engine();
   const int O = 0, I = 1, H = 2, W = 3;
   if (arr.shape().ndim() == 2) {
     tz = mkldnn::memory::dims{static_cast<int>(arr.shape()[O]), static_cast<int>(arr.shape()[I])};
-    format = mkldnn::memory::format::oi;
+    format_tag = mkldnn::memory::format_tag::oi;
   } else if (arr.shape().ndim() == 3) {
     tz = num_groups > 1
              ? mkldnn::memory::dims{num_groups, static_cast<int>(arr.shape()[O] / num_groups),
@@ -267,7 +266,7 @@ const mkldnn::memory *GetWeights(const NDArray &arr, int num_groups) {
              : mkldnn::memory::dims{static_cast<int>(arr.shape()[O]),
                                     static_cast<int>(arr.shape()[I]),
                                     static_cast<int>(arr.shape()[H])};
-    format = num_groups > 1 ? mkldnn::memory::format::goiw : mkldnn::memory::format::oiw;
+    format_tag = num_groups > 1 ? mkldnn::memory::format_tag::goiw : mkldnn::memory::format_tag::oiw;
   } else if (arr.shape().ndim() == 4) {
     tz = num_groups > 1
              ? mkldnn::memory::dims{num_groups, static_cast<int>(arr.shape()[O] / num_groups),
@@ -277,32 +276,46 @@ const mkldnn::memory *GetWeights(const NDArray &arr, int num_groups) {
              : mkldnn::memory::dims{
                    static_cast<int>(arr.shape()[O]), static_cast<int>(arr.shape()[I]),
                    static_cast<int>(arr.shape()[H]), static_cast<int>(arr.shape()[W])};
-    format = num_groups > 1 ? mkldnn::memory::format::goihw : mkldnn::memory::format::oihw;
+    format_tag = num_groups > 1 ? mkldnn::memory::format_tag::goihw : mkldnn::memory::format_tag::oihw;
   } else {
     LOG(FATAL) << "The weight array has an unsupported number of dimensions";
   }
-  const auto md = mkldnn::memory::desc{tz, type, format};
-  const auto pd = mkldnn::memory::primitive_desc{md, engine};
-  return arr.GetMKLDNNData(pd);
-#endif
-          LOG(FATAL)<<"mkldnnv1.0 GetWeights";
+  const auto md = mkldnn::memory::desc{tz, type, format_tag};
+  return arr.GetMKLDNNData(md);
 }
 
 const mkldnn::memory *GetWeights(const NDArray &arr,
                                  const mkldnn::memory::desc &target_desc, int num_groups) {
-#if 0                
-  const mkldnn::memory *mem = arr.GetMKLDNNData(target_pd);
+  const mkldnn::memory *mem = arr.GetMKLDNNData(target_desc);
   // If the weight array already uses the target layout, simply return it directly.
   if (mem) return mem;
   mem = GetWeights(arr, num_groups);
-  if (mem == nullptr) mem = arr.GetMKLDNNDataReorder(target_pd);
-  if (mem->get_primitive_desc() == target_pd) return mem;
+  if (mem == nullptr) mem = arr.GetMKLDNNDataReorder(target_desc);
+  if (mem->get_desc() == target_desc) return mem;
 
-  auto ret = TmpMemMgr::Get()->Alloc(target_pd);
+  auto ret = TmpMemMgr::Get()->Alloc(target_desc);
   MKLDNNStream::Get()->RegisterPrim(mkldnn::reorder(*mem, *ret));
+  MKLDNNStream::Get()->RegisterArgs({ { MKLDNN_ARG_FROM, *mem },
+                                      { MKLDNN_ARG_TO, *ret } });
   return ret;
-#endif
-            LOG(FATAL)<<"mkldnnv1.0 GetWeights";
+}
+
+bool IsMKLDNN(const mkldnn::memory::desc &desc) {
+  bool rslt = true;
+  if(desc.data.format_kind == mkldnn_blocked) {
+    if(desc.data.format_desc.blocking.inner_nblks == 0) {
+      int i = 0;
+      for(i = 0; i < desc.data.ndims-1; i++) {
+        if(desc.data.format_desc.blocking.strides[i] < desc.data.format_desc.blocking.strides[i + 1]) {
+          break;
+        }
+      }
+      if(i == desc.data.ndims-1) {
+        rslt = false;
+      }
+    }
+  }
+  return rslt;
 }
 
 mkldnn_format_tag_t GetDefaultFormat(int num_dims) {

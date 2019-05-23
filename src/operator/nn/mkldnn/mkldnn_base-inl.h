@@ -248,17 +248,13 @@ inline static mkldnn::memory::desc GetMemDesc(const NDArray &arr, int dtype = -1
   mkldnn::memory::dims dims(ndim);
   dtype = (dtype == -1) ? arr.dtype() : dtype;
   for (size_t i = 0; i < dims.size(); i++) dims[i] = arr.shape()[i];
-#if 0  
-  return mkldnn::memory::desc{dims, get_mkldnn_type(dtype), mkldnn::memory::format::any};
-#endif
-  LOG(FATAL)<<"mkldnnv1.0 GetMemDesc";
+  return mkldnn::memory::desc{dims, get_mkldnn_type(dtype), mkldnn::memory::format_tag::any};
 }
 
 inline static mkldnn::memory::desc GetWeightDesc(const NDArray &arr,
                                                  int num_groups,
                                                  bool quantized = false) {
   int dtype = quantized ? mshadow::kInt8 : arr.dtype();
-#if 0  
   if (num_groups == 1) {
     return GetMemDesc(arr, dtype);
   } else {
@@ -277,10 +273,8 @@ inline static mkldnn::memory::desc GetWeightDesc(const NDArray &arr,
           static_cast<int>(arr.shape()[C]), static_cast<int>(arr.shape()[H]),
           static_cast<int>(arr.shape()[W])};
     }
-    return mkldnn::memory::desc{tz, get_mkldnn_type(dtype), mkldnn::memory::format::any};
+    return mkldnn::memory::desc{tz, get_mkldnn_type(dtype), mkldnn::memory::format_tag::any};
   }  
-#endif
-  LOG(FATAL)<<"mkldnnv1.0 GetWeightDesc";
 }
 
 typedef std::shared_ptr<mkldnn::memory> mkldnn_mem_ptr;
@@ -531,6 +525,7 @@ mkldnn_format_tag_t GetDefaultFormat(const mkldnn::memory::desc &desc);
 mkldnn_format_tag_t GetDefaultFormat(int num_dims);
 
 bool IsDefaultFormat(const mkldnn::memory::desc &desc);
+bool IsMKLDNN(const mkldnn::memory::desc &desc);
 
 mkldnn::memory::desc GetDesc(mkldnn::memory::desc desc,
                                                 mkldnn_format_tag_t format);
@@ -642,11 +637,8 @@ class MKLDNNMemory {
     return rslt;
   }
 
-  bool SameFormat(mkldnn::memory::desc desc) const {
-#if 0   
-    return mem->get_primitive_desc() == pd;
-#endif
-  LOG(FATAL)<<"mkldnnv1.0 SameFormat";
+  bool SameFormat(const mkldnn::memory::desc &desc) const {
+    return mem->get_desc() == desc;
   }
 
   bool SameFormat(const mxnet::TShape &shape, int dtype) const {

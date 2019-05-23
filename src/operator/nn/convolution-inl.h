@@ -181,6 +181,12 @@ class ConvolutionOp {
     CHECK_EQ(in_data.size(), expected);
     CHECK_EQ(out_data.size(), 1U);
     CHECK_EQ(req[conv::kOut], kWriteTo);
+
+    float* pIn = (float*)(in_data[conv::kData].dptr_);
+  for(int i=0; i<10; i++) {
+      LOG(INFO)<<"indata i is "<<pIn[i];
+  }
+
     LayerSetUp(in_data[conv::kData].shape_, out_data[conv::kOut].shape_);
     Stream<xpu>* s = ctx.get_stream<xpu>();
 

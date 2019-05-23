@@ -24,7 +24,7 @@
 */
 
 
-#if MXNET_USE_MKLDNN == 0
+#if MXNET_USE_MKLDNN == 1
 
 #include "../convolution-inl.h"
 #include "./mkldnn_ops-inl.h"
@@ -44,6 +44,14 @@ bool SupportMKLDNNConv(const ConvolutionParam& params, const NDArray &input) {
          ((input.shape().ndim() == 3) ||
           (input.shape().ndim() == 4));
 }
+inline static mkldnn::memory::desc GetMemDescTest(const NDArray &arr, int dtype = -1) {
+  int ndim = arr.shape().ndim();
+  mkldnn::memory::dims dims(ndim);
+  dtype = (dtype == -1) ? arr.dtype() : dtype;
+  for (size_t i = 0; i < dims.size(); i++) dims[i] = arr.shape()[i];
+  return mkldnn::memory::desc{dims, get_mkldnn_type(dtype), mkldnn::memory::format_tag::nchw};
+}
+
 
 mkldnn::convolution_forward::primitive_desc GetConvFwdImpl(const MKLDNNConvFullParam &param,
                                                            const bool is_train, const NDArray &data,
@@ -53,11 +61,13 @@ mkldnn::convolution_forward::primitive_desc GetConvFwdImpl(const MKLDNNConvFullP
   auto prop = is_train ? mkldnn::prop_kind::forward_training : mkldnn::prop_kind::forward_scoring;
   auto data_md = GetMemDesc(data);
   auto weight_md = GetWeightDesc(weights, param.conv_param.num_group, param.mkldnn_param.quantized);
-  auto out_md = GetMemDesc(output);
+  auto out_md = GetMemDescTest(output);
+  //auto out_md = GetMemDesc(output);
+  LOG(INFO)<<"mkldnnv1.0 Warning !!!!!!!!!!!!!!!!!! should use GetMemDesc for out_md to get best perf. Now use nchw for test or will error when next OP is not mkldnn";
   auto bias_md =
       bias ? (param.mkldnn_param.quantized ? GetMemDesc(*bias, mshadow::kInt32) : GetMemDesc(*bias))
            : mkldnn::memory::desc{
-             {}, mkldnn::memory::data_type::data_undef, mkldnn::memory::format::any};
+             {}, mkldnn::memory::data_type::undef, mkldnn::memory::format_tag::any};
   auto bias_md_ptr = bias ? &bias_md : nullptr;
 
   mkldnn::memory::dims strides(param.conv_param.kernel.ndim());
@@ -86,33 +96,34 @@ mkldnn::convolution_forward::primitive_desc GetConvFwdImpl(const MKLDNNConvFullP
     float scale = 1.0f;  // for fp32, scale is 1.
     float alpha = 0.0f;  // negative slope for mkldnn_eltwise_relu.
     float beta = 1.0f;   // ignored for mkldnn_eltwise_relu.
-    ops.append_eltwise(scale, eltwise_relu, alpha, beta);
+    LOG(INFO)<<"mkldnnv1.0 add GetConvFwdImpl eltwise_relu !!!!!!!!!!!!!!!!!";
+    ops.append_eltwise(scale, mkldnn::algorithm::eltwise_relu, alpha, beta);
   }
   if (param.mkldnn_param.with_sum) {
+    LOG(INFO)<<"mkldnnv1.0 GetConvFwdImpl add param.sum_scale !!!!!!!!!!!!!!!!!";
     ops.append_sum(param.sum_scale);
   }
   if (param.mkldnn_param.with_postsum_relu) {
     float scale = 1.0f;  // for fp32, scale is 1.
     float alpha = 0.0f;  // negative slope for mkldnn_eltwise_relu.
     float beta = 1.0f;   // ignored for mkldnn_eltwise_relu.
-    ops.append_eltwise(scale, eltwise_relu, alpha, beta);
+    ops.append_eltwise(scale, mkldnn::algorithm::eltwise_relu, alpha, beta);
   }
   attr.set_post_ops(ops);
 
   if (param.mkldnn_param.quantized && param.requantize_scales.size()) {
     int mask = (param.requantize_scales.size() > 1) ? 2 : 0;
     attr.set_output_scales(mask, param.requantize_scales);
-    attr.set_int_output_round_mode(round_nearest);
   }
   auto GetConvFwdPd = [&param, &data, &weights, &output,
                        &attr](const mkldnn::convolution_forward::desc &desc) {
     auto engine = CpuEngine::Get()->get_engine();
     try {
       auto conv_pd = mkldnn::convolution_forward::primitive_desc(desc, attr, engine);
-      while (conv_pd.dst_primitive_desc().get_size() != GetArraySize(output) ||
-             conv_pd.src_primitive_desc().get_size() != GetArraySize(data) ||
+      while (conv_pd.dst_desc().get_size() != GetArraySize(output) ||
+             conv_pd.src_desc().get_size() != GetArraySize(data) ||
              (!param.mkldnn_param.quantized &&
-              conv_pd.weights_primitive_desc().get_size() != GetArraySize(weights))) {
+              conv_pd.weights_desc().get_size() != GetArraySize(weights))) {
         // next_impl() will visit desc and engine, please make sure they are still alive here.
         CHECK(conv_pd.next_impl()) << "No convolution implementation for this request.";
       }
@@ -166,6 +177,7 @@ mkldnn::convolution_forward::primitive_desc GetConvFwdImpl(const MKLDNNConvFullP
 static mkldnn::convolution_backward_data::primitive_desc GetConvBwdData(
     const ConvolutionParam& param, const NDArray &data, const NDArray &weights,
     const NDArray &output, const mkldnn::convolution_forward::primitive_desc &fwd_pd) {
+#if 0
   auto data_md = GetMemDesc(data);
   auto weight_md = GetWeightDesc(weights, param.num_group);
   auto out_md = GetMemDesc(output);
@@ -228,12 +240,14 @@ static mkldnn::convolution_backward_data::primitive_desc GetConvBwdData(
     }
     return conv_pd;
   }
+#endif  
 }
 
 static mkldnn::convolution_backward_weights::primitive_desc GetConvBwdWeights(
     const ConvolutionParam& param, const NDArray &data,
     const NDArray &weights, const NDArray *bias, const NDArray &output,
     const mkldnn::convolution_forward::primitive_desc &fwd_pd) {
+#if 0
   auto data_md = GetMemDesc(data);
   auto weight_md = GetWeightDesc(weights, param.num_group);
   auto out_md = GetMemDesc(output);
@@ -323,22 +337,20 @@ static mkldnn::convolution_backward_weights::primitive_desc GetConvBwdWeights(
       return conv_pd;
     }
   }
+#endif
 }
 
 MKLDNNConvForward::MKLDNNConvForward(const MKLDNNConvFullParam &param, const bool is_train,
                                      const NDArray &data, const NDArray &weights,
                                      const NDArray *bias, const NDArray &output)
     : fwd_pd(GetConvFwdImpl(param, is_train, data, weights, bias, output)) {
-  data_ = std::make_shared<mkldnn::memory>(fwd_pd.src_primitive_desc(), nullptr);
-  weight_ = std::make_shared<mkldnn::memory>(fwd_pd.weights_primitive_desc(), nullptr);
-  out_ = std::make_shared<mkldnn::memory>(fwd_pd.dst_primitive_desc(), nullptr);
+  auto engine = CpuEngine::Get()->get_engine();
+  data_ = std::make_shared<mkldnn::memory>(fwd_pd.src_desc(), engine, nullptr);
+  weight_ = std::make_shared<mkldnn::memory>(fwd_pd.weights_desc(), engine, nullptr);
+  out_ = std::make_shared<mkldnn::memory>(fwd_pd.dst_desc(), engine, nullptr);
+  fwd_ = std::make_shared<mkldnn::convolution_forward>(fwd_pd);
   if (bias) {
-    bias_ = std::make_shared<mkldnn::memory>(fwd_pd.bias_primitive_desc(), nullptr);
-    fwd_ = std::make_shared<mkldnn::convolution_forward>(fwd_pd, *this->data_, *this->weight_,
-                                                         *this->bias_, *this->out_);
-  } else {
-    fwd_ = std::make_shared<mkldnn::convolution_forward>(fwd_pd, *this->data_, *this->weight_,
-                                                         *this->out_);
+    bias_ = std::make_shared<mkldnn::memory>(fwd_pd.bias_desc(), engine, nullptr);
   }
 }
 
@@ -389,18 +401,47 @@ void MKLDNNConvolutionForwardFullFeature(const MKLDNNConvFullParam &param,
                                          const std::vector<NDArray> &out_data) {
   TmpMemMgr::Get()->Init(ctx.requested[conv::kTempSpace]);
 
+  int dataSize = 0;
+  int weightSize = 0;
+  int biasSize = 0;
+  LOG(INFO)<<" shape data "<<in_data[conv::kData].shape()<<" weight "<<in_data[conv::kWeight].shape()<<" out shape "<<out_data[0].shape();
+  if (!(param.conv_param.no_bias && !param.mkldnn_param.with_bn)) {
+    LOG(INFO)<<" shape bias " << in_data[conv::kBias].shape();
+    biasSize = in_data[conv::kBias].shape().Size();
+  }
+  dataSize = in_data[conv::kData].shape().Size();
+  weightSize = in_data[conv::kWeight].shape().Size();
+#if 0
+  float* pInData = (float *)(*in_data[conv::kData].GetMKLDNNData()).get_data_handle();
+  for(int i=0; i<dataSize; i++) {
+    LOG(INFO) << "in dataSize i "<< i<< " is "<< pInData[i];
+  }
+
+  float* pInWeight = (float *)(*in_data[conv::kWeight].GetMKLDNNData()).get_data_handle();
+  for(int i=0; i<weightSize; i++) {
+    LOG(INFO) << "in weightSize i "<< i<< " is "<< pInWeight[i];
+  }
+
+  if(!(param.conv_param.no_bias && !param.mkldnn_param.with_bn)) {
+    float* pBias = (float *)(*in_data[conv::kBias].GetMKLDNNData()).get_data_handle();
+    for(int i=0; i<biasSize; i++) {
+      LOG(INFO) << "in biasSize i "<< i<< " is "<< pBias[i];
+    }
+  }
+#endif
   auto data = in_data[conv::kData];
   if (data.IsView() && data.IsMKLDNNData())
     data = data.Reorder2Default();
 
+   
   auto weight = in_data[conv::kWeight];
   if (weight.IsView() && weight.IsMKLDNNData())
     weight = weight.Reorder2Default();
 
   bool no_bias = param.conv_param.no_bias && !param.mkldnn_param.with_bn;
+  LOG(INFO)<<"mkldnnv1.0 no_bias "<< param.conv_param.no_bias <<" with_bn "<< param.mkldnn_param.with_bn;
 
-  auto data_mem = data.GetMKLDNNDataReorder(
-      fwd->fwd_pd.src_primitive_desc());
+  auto data_mem = data.GetMKLDNNDataReorder(fwd->fwd_pd.src_desc());
   const mkldnn::memory *weight_mem;
   if (ctx.is_train) {
     // TODO(zhengda) kvstore doesn't handle MKLDNN correctly. Let's reorder it
@@ -409,20 +450,20 @@ void MKLDNNConvolutionForwardFullFeature(const MKLDNNConvFullParam &param,
       // This asks the engine to change the layout of the weight array after
       // it's used.
       weight.Reorder2DefaultAsync();
-    weight_mem = GetWeights(weight, fwd->fwd_pd.weights_primitive_desc(),
+    weight_mem = GetWeights(weight, fwd->fwd_pd.weights_desc(),
                             param.conv_param.num_group);
   } else {
     // For inference, we want to reorder the weight array so we don't need to
     // reorder data every time.
     if (weight.IsDefaultData()) {
-      weight_mem = GetWeights(weight, fwd->fwd_pd.weights_primitive_desc(),
+      weight_mem = GetWeights(weight, fwd->fwd_pd.weights_desc(),
                               param.conv_param.num_group);
       // We also need to modify the layout on the original weight array. The
       // data conversion happens after the weight array is used.
-      weight.MKLDNNDataReorderAsync(fwd->fwd_pd.weights_primitive_desc());
+      weight.MKLDNNDataReorderAsync(fwd->fwd_pd.weights_desc());
     } else {
       weight_mem = weight.GetMKLDNNData();
-      CHECK(weight_mem->get_primitive_desc() == fwd->fwd_pd.weights_primitive_desc());
+      CHECK(weight_mem->get_desc() == fwd->fwd_pd.weights_desc());
     }
   }
   mkldnn_output_t out_mem;
@@ -432,18 +473,53 @@ void MKLDNNConvolutionForwardFullFeature(const MKLDNNConvFullParam &param,
         const_cast<mkldnn::memory *>(out_data[conv::kOut].GetMKLDNNData()));
   } else {
     out_mem = CreateMKLDNNMem(out_data[conv::kOut],
-                              fwd->fwd_pd.dst_primitive_desc(), req[conv::kOut]);
+                              fwd->fwd_pd.dst_desc(), req[conv::kOut]);
   }
 
+  std::unordered_map<int, memory> net_args;
   const mkldnn::memory *bias_mem = nullptr;
   if (!no_bias) {
     bias_mem = in_data[conv::kBias].GetMKLDNNData();
+    net_args.insert({ MKLDNN_ARG_BIAS, *bias_mem});
   }
   fwd->SetNewMem(*data_mem, *weight_mem, bias_mem, *out_mem.second);
   MKLDNNStream::Get()->RegisterPrim(fwd->GetFwd());
-
+  net_args.insert({ MKLDNN_ARG_SRC, *data_mem });
+  net_args.insert({ MKLDNN_ARG_WEIGHTS, *weight_mem });
+  net_args.insert({ MKLDNN_ARG_DST, *out_mem.second  });
+//  MKLDNNStream::Get()->RegisterArgs({ { MKLDNN_ARG_SRC, *data_mem },
+//                       { MKLDNN_ARG_WEIGHTS, *weight_mem },
+//                       { MKLDNN_ARG_BIAS, *bias_mem },
+//                       { MKLDNN_ARG_DST, *out_mem.second } });
+  MKLDNNStream::Get()->RegisterArgs(net_args);
   CommitOutput(out_data[conv::kOut], out_mem);
-  MKLDNNStream::Get()->Submit();
+  MKLDNNStream::Get()->Submit(false);
+  float* pout = (float *)(*out_data[conv::kOut].GetMKLDNNData()).get_data_handle();
+  float* pweight = (float *)weight_mem->get_data_handle();
+  float* pdata = (float *)data_mem->get_data_handle();
+
+//  for(int i=0; i<out_data[conv::kOut].shape().Size(); i++) {
+//    LOG(INFO)<<"outM i "<<i<<" is "<<poutM[i];
+//  }
+
+#if 0
+  for(int i=0; i<out_data[conv::kOut].shape().Size(); i++) {
+    LOG(INFO)<<"out i "<<i<<" is "<<pout[i];
+  }
+  for(int i=0; i<weightSize; i++) {
+    LOG(INFO)<<"out weightSize i "<<i<<" is "<<pweight[i];
+  }
+  for(int i=0; i<dataSize; i++) {
+    LOG(INFO)<<"out dataSize i "<<i<<" is "<<pdata[i];
+  }
+  if(!no_bias) {
+      float* pbias = (float *)bias_mem->get_data_handle();
+      for(int i=0; i<biasSize; i++) {
+        LOG(INFO)<<"out biasSize i is "<<pbias[i];
+      }
+  }
+  CHECK(false)<<"stop to check";
+#endif
 }
 
 void MKLDNNConvolutionForward(const nnvm::NodeAttrs &attrs,
@@ -488,6 +564,7 @@ class MKLDNNConvBackward {
 
   void SetDataNewMem(const mkldnn::memory &out_grad, const mkldnn::memory &weight,
                      const mkldnn::memory &in_grad) {
+#if 0
     if (this->out_grad == nullptr)
       this->out_grad = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
         bwdData_pd.diff_dst_primitive_desc(), out_grad.get_data_handle()));
@@ -508,11 +585,13 @@ class MKLDNNConvBackward {
         new mkldnn::convolution_backward_data(
           this->bwdData_pd, mkldnn::primitive::at(*this->out_grad),
           mkldnn::primitive::at(*this->weight), *this->in_grad));
+#endif
   }
 
 void SetWeightNewMem(const mkldnn::memory &data,
                      const mkldnn::memory &out_grad,
                      const mkldnn::memory &in_grad_weight) {
+#if 0
     if (this->data == nullptr)
       this->data = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
           bwdWeights_pd.src_primitive_desc(), data.get_data_handle()));
@@ -535,12 +614,15 @@ void SetWeightNewMem(const mkldnn::memory &data,
           new mkldnn::convolution_backward_weights(
               this->bwdWeights_pd, mkldnn::primitive::at(*this->data),
               mkldnn::primitive::at(*this->output), *this->in_grad_weight));
-  }
+
+#endif
+    }
 
   void SetWeightNewMem(const mkldnn::memory &data,
                        const mkldnn::memory &out_grad,
                        const mkldnn::memory &in_grad_weight,
                        const mkldnn::memory &in_grad_bias) {
+#if 0
     if (this->data == nullptr)
       this->data = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
           bwdWeights_pd.src_primitive_desc(), data.get_data_handle()));
@@ -570,6 +652,7 @@ void SetWeightNewMem(const mkldnn::memory &data,
               this->bwdWeights_pd, mkldnn::primitive::at(*this->data),
               mkldnn::primitive::at(*this->output), *this->in_grad_weight,
               *this->in_grad_bias));
+#endif
   }
 
   const mkldnn::convolution_backward_data &GetBwdData() const {
@@ -585,6 +668,7 @@ static inline MKLDNNConvBackward &GetConvBwd(
     const nnvm::NodeAttrs &attrs, const NDArray &data, const NDArray &weights,
     const NDArray *bias, const NDArray &output,
     const mkldnn::convolution_forward::primitive_desc &fwd_pd) {
+#if 0
 #if DMLC_CXX11_THREAD_LOCAL
   static thread_local std::unordered_map<MKLDNNConvSignature, MKLDNNConvBackward, OpHash> bwds;
 #else
@@ -608,12 +692,14 @@ static inline MKLDNNConvBackward &GetConvBwd(
     it = AddToCache(&bwds, key, bwd);
   }
   return it->second;
+#endif
 }
 
 void MKLDNNConvolutionBackward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
                                const std::vector<NDArray>& inputs,
                                const std::vector<OpReqType>& req,
                                const std::vector<NDArray>& outputs) {
+#if 0
   TmpMemMgr::Get()->Init(ctx.requested[conv::kTempSpace]);
   const std::vector<NDArray> &in_grad = outputs;
   MKLDNNConvFullParam full_param;
@@ -682,8 +768,10 @@ void MKLDNNConvolutionBackward(const nnvm::NodeAttrs& attrs, const OpContext &ct
     CommitOutput(in_grad[conv::kWeight], in_grad_weight);
   }
   MKLDNNStream::Get()->Submit();
+#endif
 }
 
 }  // namespace op
 }  // namespace mxnet
 #endif  // MXNET_USE_MKLDNN == 0
+
