@@ -58,11 +58,6 @@ static void ConvolutionComputeExCPU(const nnvm::NodeAttrs& attrs,
                                     const std::vector<OpReqType>& req,
                                     const std::vector<NDArray>& outputs) {
   const ConvolutionParam& params = nnvm::get<ConvolutionParam>(attrs.parsed);
-    float* pIn = (float*)(inputs[0].data().dptr_);
-  for(int i=0; i<10; i++) {
-    LOG(INFO)<<"ConvolutionComputeExCPU indata i is "<<pIn[i];
-  }
-  LOG(INFO)<<"pointer is "<< pIn;
   if (SupportMKLDNNConv(params, inputs[0])) {
     MKLDNN_OPCHECK_INIT(false, outputs.size(), inputs, outputs);
     MKLDNNConvolutionForward(attrs, ctx, inputs, req, outputs);

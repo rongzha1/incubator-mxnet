@@ -622,15 +622,17 @@ class MKLDNNMemory {
 
   bool IsMKLDNN() const {
     bool rslt = true;
-    if(desc.data.format_kind == mkldnn_blocked ) {
-      int i = 0;
-      for(i = 0; i < desc.data.ndims-1; i++) {
-        if(desc.data.format_desc.blocking.strides[i] < desc.data.format_desc.blocking.strides[i + 1]) {
-          break;
+    if(desc.data.format_kind == mkldnn_blocked) {
+      if(desc.data.format_desc.blocking.inner_nblks == 0) {
+        int i = 0;
+        for(i = 0; i < desc.data.ndims-1; i++) {
+      	if(desc.data.format_desc.blocking.strides[i] < desc.data.format_desc.blocking.strides[i + 1]) {
+      	  break;
+      	}
         }
-      }
-      if(i == desc.data.ndims-1) {
-        rslt = false;
+        if(i == desc.data.ndims-1) {
+      	rslt = false;
+        }
       }
     }
     LOG(INFO)<<"mkldnnv1.0 IsMKLDNN return "<< rslt;
