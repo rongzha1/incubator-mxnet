@@ -165,7 +165,6 @@ mkldnn::convolution_forward::primitive_desc GetConvFwdImpl(const MKLDNNConvFullP
 static mkldnn::convolution_backward_data::primitive_desc GetConvBwdData(
     const ConvolutionParam& param, const NDArray &data, const NDArray &weights,
     const NDArray &output, const mkldnn::convolution_forward::primitive_desc &fwd_pd) {
-#if 0
   auto data_md = GetMemDesc(data);
   auto weight_md = GetWeightDesc(weights, param.num_group);
   auto out_md = GetMemDesc(output);
@@ -200,9 +199,9 @@ static mkldnn::convolution_backward_data::primitive_desc GetConvBwdData(
     mkldnn::convolution_backward_data::desc desc(mkldnn::algorithm::convolution_direct,
         data_md, weight_md, out_md, strides, padding, padding, mkldnn::padding_kind::zero);
     auto conv_pd = mkldnn::convolution_backward_data::primitive_desc(desc, engine, fwd_pd);
-    while (conv_pd.diff_dst_primitive_desc().get_size() != GetArraySize(output) ||
-           conv_pd.diff_src_primitive_desc().get_size() != GetArraySize(data) ||
-           conv_pd.weights_primitive_desc().get_size() != GetArraySize(weights)) {
+    while (conv_pd.diff_dst_desc().get_size() != GetArraySize(output) ||
+           conv_pd.diff_src_desc().get_size() != GetArraySize(data) ||
+           conv_pd.weights_desc().get_size() != GetArraySize(weights)) {
       CHECK(conv_pd.next_impl()) << "No implementation";
     }
     return conv_pd;
@@ -221,21 +220,19 @@ static mkldnn::convolution_backward_data::primitive_desc GetConvBwdData(
         data_md, weight_md, out_md, strides, dilates, padding, padding,
         mkldnn::padding_kind::zero);
     auto conv_pd = mkldnn::convolution_backward_data::primitive_desc(desc, engine, fwd_pd);
-    while (conv_pd.diff_dst_primitive_desc().get_size() != GetArraySize(output) ||
-           conv_pd.diff_src_primitive_desc().get_size() != GetArraySize(data) ||
-           conv_pd.weights_primitive_desc().get_size() != GetArraySize(weights)) {
+    while (conv_pd.diff_dst_desc().get_size() != GetArraySize(output) ||
+           conv_pd.diff_src_desc().get_size() != GetArraySize(data) ||
+           conv_pd.weights_desc().get_size() != GetArraySize(weights)) {
       CHECK(conv_pd.next_impl()) << "No implementation";
     }
     return conv_pd;
   }
-#endif  
 }
 
 static mkldnn::convolution_backward_weights::primitive_desc GetConvBwdWeights(
     const ConvolutionParam& param, const NDArray &data,
     const NDArray &weights, const NDArray *bias, const NDArray &output,
     const mkldnn::convolution_forward::primitive_desc &fwd_pd) {
-#if 0
   auto data_md = GetMemDesc(data);
   auto weight_md = GetWeightDesc(weights, param.num_group);
   auto out_md = GetMemDesc(output);
@@ -270,9 +267,9 @@ static mkldnn::convolution_backward_weights::primitive_desc GetConvBwdWeights(
     mkldnn::convolution_backward_weights::desc desc(mkldnn::algorithm::convolution_direct,
         data_md, weight_md, out_md, strides, padding, padding, mkldnn::padding_kind::zero);
     auto conv_pd = mkldnn::convolution_backward_weights::primitive_desc(desc, engine, fwd_pd);
-    while (conv_pd.diff_dst_primitive_desc().get_size() != GetArraySize(output) ||
-           conv_pd.src_primitive_desc().get_size() != GetArraySize(data) ||
-           conv_pd.diff_weights_primitive_desc().get_size() != GetArraySize(weights)) {
+    while (conv_pd.diff_dst_desc().get_size() != GetArraySize(output) ||
+           conv_pd.src_desc().get_size() != GetArraySize(data) ||
+           conv_pd.diff_weights_desc().get_size() != GetArraySize(weights)) {
       CHECK(conv_pd.next_impl()) << "No implementation";
     }
     return conv_pd;
@@ -282,9 +279,9 @@ static mkldnn::convolution_backward_weights::primitive_desc GetConvBwdWeights(
         data_md, weight_md, bias_md, out_md, strides, padding, padding,
         mkldnn::padding_kind::zero);
     auto conv_pd = mkldnn::convolution_backward_weights::primitive_desc(desc, engine, fwd_pd);
-    while (conv_pd.diff_dst_primitive_desc().get_size() != GetArraySize(output) ||
-           conv_pd.src_primitive_desc().get_size() != GetArraySize(data) ||
-           conv_pd.diff_weights_primitive_desc().get_size() != GetArraySize(weights)) {
+    while (conv_pd.diff_dst_desc().get_size() != GetArraySize(output) ||
+           conv_pd.src_desc().get_size() != GetArraySize(data) ||
+           conv_pd.diff_weights_desc().get_size() != GetArraySize(weights)) {
       CHECK(conv_pd.next_impl()) << "No implementation";
     }
     return conv_pd;
@@ -304,9 +301,9 @@ static mkldnn::convolution_backward_weights::primitive_desc GetConvBwdWeights(
           data_md, weight_md, out_md, strides, dilates, padding, padding,
           mkldnn::padding_kind::zero);
       auto conv_pd = mkldnn::convolution_backward_weights::primitive_desc(desc, engine, fwd_pd);
-      while (conv_pd.diff_dst_primitive_desc().get_size() != GetArraySize(output) ||
-             conv_pd.src_primitive_desc().get_size() != GetArraySize(data) ||
-             conv_pd.diff_weights_primitive_desc().get_size() != GetArraySize(weights)) {
+      while (conv_pd.diff_dst_desc().get_size() != GetArraySize(output) ||
+             conv_pd.src_desc().get_size() != GetArraySize(data) ||
+             conv_pd.diff_weights_desc().get_size() != GetArraySize(weights)) {
         CHECK(conv_pd.next_impl()) << "No implementation";
       }
       return conv_pd;
@@ -317,15 +314,14 @@ static mkldnn::convolution_backward_weights::primitive_desc GetConvBwdWeights(
                                                       strides, dilates, padding, padding,
                                                       mkldnn::padding_kind::zero);
       auto conv_pd = mkldnn::convolution_backward_weights::primitive_desc(desc, engine, fwd_pd);
-      while (conv_pd.diff_dst_primitive_desc().get_size() != GetArraySize(output) ||
-             conv_pd.src_primitive_desc().get_size() != GetArraySize(data) ||
-             conv_pd.diff_weights_primitive_desc().get_size() != GetArraySize(weights)) {
+      while (conv_pd.diff_dst_desc().get_size() != GetArraySize(output) ||
+             conv_pd.src_desc().get_size() != GetArraySize(data) ||
+             conv_pd.diff_weights_desc().get_size() != GetArraySize(weights)) {
         CHECK(conv_pd.next_impl()) << "No implementation";
       }
       return conv_pd;
     }
   }
-#endif
 }
 
 MKLDNNConvForward::MKLDNNConvForward(const MKLDNNConvFullParam &param, const bool is_train,
@@ -493,95 +489,85 @@ class MKLDNNConvBackward {
 
   void SetDataNewMem(const mkldnn::memory &out_grad, const mkldnn::memory &weight,
                      const mkldnn::memory &in_grad) {
-#if 0
+    auto engine = CpuEngine::Get()->get_engine();                     
     if (this->out_grad == nullptr)
       this->out_grad = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-        bwdData_pd.diff_dst_primitive_desc(), out_grad.get_data_handle()));
+        bwdData_pd.diff_dst_desc(), engine, out_grad.get_data_handle()));
     else
       this->out_grad->set_data_handle(out_grad.get_data_handle());
     if (this->in_grad == nullptr)
       this->in_grad = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-        bwdData_pd.diff_src_primitive_desc(), in_grad.get_data_handle()));
+        bwdData_pd.diff_src_desc(), engine, in_grad.get_data_handle()));
     else
       this->in_grad->set_data_handle(in_grad.get_data_handle());
     if (this->weight == nullptr)
       this->weight = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-         bwdData_pd.weights_primitive_desc(), weight.get_data_handle()));
+         bwdData_pd.weights_desc(), engine, weight.get_data_handle()));
     else
       this->weight->set_data_handle(weight.get_data_handle());
     if (this->bwd_data == nullptr)
       this->bwd_data = std::shared_ptr<mkldnn::convolution_backward_data>(
-        new mkldnn::convolution_backward_data(
-          this->bwdData_pd, mkldnn::primitive::at(*this->out_grad),
-          mkldnn::primitive::at(*this->weight), *this->in_grad));
-#endif
+        new mkldnn::convolution_backward_data(this->bwdData_pd));
   }
 
 void SetWeightNewMem(const mkldnn::memory &data,
                      const mkldnn::memory &out_grad,
                      const mkldnn::memory &in_grad_weight) {
-#if 0
+    auto engine = CpuEngine::Get()->get_engine();                     
     if (this->data == nullptr)
       this->data = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-          bwdWeights_pd.src_primitive_desc(), data.get_data_handle()));
+          bwdWeights_pd.src_desc(), engine, data.get_data_handle()));
     else
       this->data->set_data_handle(data.get_data_handle());
     if (this->output == nullptr)
       this->output = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-          bwdWeights_pd.diff_dst_primitive_desc(), out_grad.get_data_handle()));
+          bwdWeights_pd.diff_dst_desc(), engine, out_grad.get_data_handle()));
     else
       this->output->set_data_handle(out_grad.get_data_handle());
     if (this->in_grad_weight == nullptr)
       this->in_grad_weight = std::shared_ptr<mkldnn::memory>(
-          new mkldnn::memory(bwdWeights_pd.diff_weights_primitive_desc(),
+          new mkldnn::memory(bwdWeights_pd.diff_weights_desc(), engine,
                              in_grad_weight.get_data_handle()));
     else
       this->in_grad_weight->set_data_handle(in_grad_weight.get_data_handle());
 
     if (this->bwd_weight == nullptr)
       this->bwd_weight = std::shared_ptr<mkldnn::convolution_backward_weights>(
-          new mkldnn::convolution_backward_weights(
-              this->bwdWeights_pd, mkldnn::primitive::at(*this->data),
-              mkldnn::primitive::at(*this->output), *this->in_grad_weight));
+          new mkldnn::convolution_backward_weights(this->bwdWeights_pd));
 
-#endif
     }
 
   void SetWeightNewMem(const mkldnn::memory &data,
                        const mkldnn::memory &out_grad,
                        const mkldnn::memory &in_grad_weight,
                        const mkldnn::memory &in_grad_bias) {
-#if 0
+    auto engine = CpuEngine::Get()->get_engine();                     
     if (this->data == nullptr)
       this->data = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-          bwdWeights_pd.src_primitive_desc(), data.get_data_handle()));
+          bwdWeights_pd.src_desc(), engine, data.get_data_handle()));
     else
       this->data->set_data_handle(data.get_data_handle());
     if (this->output == nullptr)
       this->output = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-          bwdWeights_pd.diff_dst_primitive_desc(), out_grad.get_data_handle()));
+          bwdWeights_pd.diff_dst_desc(), engine, out_grad.get_data_handle()));
     else
       this->output->set_data_handle(out_grad.get_data_handle());
     if (this->in_grad_weight == nullptr)
       this->in_grad_weight = std::shared_ptr<mkldnn::memory>(
-          new mkldnn::memory(bwdWeights_pd.diff_weights_primitive_desc(),
+          new mkldnn::memory(bwdWeights_pd.diff_weights_desc(), engine,
                              in_grad_weight.get_data_handle()));
     else
       this->in_grad_weight->set_data_handle(in_grad_weight.get_data_handle());
 
     if (this->in_grad_bias == nullptr)
       this->in_grad_bias = std::shared_ptr<mkldnn::memory>(
-          new mkldnn::memory(bwdWeights_pd.diff_bias_primitive_desc(),
+          new mkldnn::memory(bwdWeights_pd.diff_bias_desc(), engine,
                              in_grad_bias.get_data_handle()));
     else
       this->in_grad_bias->set_data_handle(in_grad_bias.get_data_handle());
     if (this->bwd_weight == nullptr)
       this->bwd_weight = std::shared_ptr<mkldnn::convolution_backward_weights>(
-          new mkldnn::convolution_backward_weights(
-              this->bwdWeights_pd, mkldnn::primitive::at(*this->data),
-              mkldnn::primitive::at(*this->output), *this->in_grad_weight,
-              *this->in_grad_bias));
-#endif
+          new mkldnn::convolution_backward_weights(this->bwdWeights_pd));
   }
 
   const mkldnn::convolution_backward_data &GetBwdData() const {
@@ -597,7 +583,6 @@ static inline MKLDNNConvBackward &GetConvBwd(
     const nnvm::NodeAttrs &attrs, const NDArray &data, const NDArray &weights,
     const NDArray *bias, const NDArray &output,
     const mkldnn::convolution_forward::primitive_desc &fwd_pd) {
-#if 0
 #if DMLC_CXX11_THREAD_LOCAL
   static thread_local std::unordered_map<MKLDNNConvSignature, MKLDNNConvBackward, OpHash> bwds;
 #else
@@ -621,14 +606,12 @@ static inline MKLDNNConvBackward &GetConvBwd(
     it = AddToCache(&bwds, key, bwd);
   }
   return it->second;
-#endif
 }
 
 void MKLDNNConvolutionBackward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
                                const std::vector<NDArray>& inputs,
                                const std::vector<OpReqType>& req,
                                const std::vector<NDArray>& outputs) {
-#if 0
   TmpMemMgr::Get()->Init(ctx.requested[conv::kTempSpace]);
   const std::vector<NDArray> &in_grad = outputs;
   MKLDNNConvFullParam full_param;
@@ -657,30 +640,41 @@ void MKLDNNConvolutionBackward(const nnvm::NodeAttrs& attrs, const OpContext &ct
   MKLDNNConvBackward &convBwd = GetConvBwd(attrs, data,
       weight, bias, out_grad, fwd_pd);
   auto out_grad_mem = out_grad.GetMKLDNNDataReorder(
-      convBwd.bwdData_pd.diff_dst_primitive_desc());
+      convBwd.bwdData_pd.diff_dst_desc());
   if (req[conv::kData]) {
     auto weight_mem = GetWeights(weight,
-        convBwd.bwdData_pd.weights_primitive_desc(), param.num_group);
+        convBwd.bwdData_pd.weights_desc(), param.num_group);
     auto in_grad_mem = CreateMKLDNNMem(in_grad[conv::kData],
-        convBwd.bwdData_pd.diff_src_primitive_desc(), req[conv::kData]);
+        convBwd.bwdData_pd.diff_src_desc(), req[conv::kData]);
     convBwd.SetDataNewMem(*out_grad_mem, *weight_mem, *in_grad_mem.second);
     MKLDNNStream::Get()->RegisterPrim(convBwd.GetBwdData());
+    MKLDNNStream::Get()->RegisterArgs({
+                {MKLDNN_ARG_DIFF_DST, *out_grad_mem},
+                {MKLDNN_ARG_WEIGHTS, *weight_mem},
+                {MKLDNN_ARG_DIFF_SRC, *in_grad_mem.second}});
     CommitOutput(in_grad[conv::kData], in_grad_mem);
   }
   if (req[conv::kWeight]) {
     MKLDNNConvBackward &convBwdWeight = GetConvBwd(attrs, data,
         weight, bias, out_grad, fwd_pd);
-    if (convBwdWeight.bwdData_pd.diff_dst_primitive_desc() !=
-        convBwdWeight.bwdWeights_pd.diff_dst_primitive_desc())
+    if (convBwdWeight.bwdData_pd.diff_dst_desc() !=
+        convBwdWeight.bwdWeights_pd.diff_dst_desc())
       out_grad_mem = out_grad.GetMKLDNNDataReorder(
-          convBwdWeight.bwdWeights_pd.diff_dst_primitive_desc());
+          convBwdWeight.bwdWeights_pd.diff_dst_desc());
     auto data_mem = data.GetMKLDNNDataReorder(
-        convBwdWeight.bwdWeights_pd.src_primitive_desc());
+        convBwdWeight.bwdWeights_pd.src_desc());
     auto in_grad_weight = CreateMKLDNNWeightGrad(
         in_grad[conv::kWeight],
-        convBwdWeight.bwdWeights_pd.diff_weights_primitive_desc(),
+        convBwdWeight.bwdWeights_pd.diff_weights_desc(),
         req[conv::kWeight]);
     mkldnn_output_t in_grad_bias;
+    
+    std::unordered_map<int, memory> args = {
+        {MKLDNN_ARG_DIFF_DST, *out_grad_mem},
+        {MKLDNN_ARG_SRC, *data_mem},
+        {MKLDNN_ARG_DIFF_WEIGHTS, *in_grad_weight.second}
+    };
+
     if (param.no_bias) {
       convBwdWeight.SetWeightNewMem(*data_mem, *out_grad_mem,
                               *in_grad_weight.second);
@@ -688,19 +682,19 @@ void MKLDNNConvolutionBackward(const nnvm::NodeAttrs& attrs, const OpContext &ct
     } else {
       in_grad_bias = CreateMKLDNNMem(
           in_grad[conv::kBias],
-          convBwdWeight.bwdWeights_pd.diff_bias_primitive_desc(), req[conv::kBias]);
+          convBwdWeight.bwdWeights_pd.diff_bias_desc(), req[conv::kBias]);
       convBwdWeight.SetWeightNewMem(*data_mem, *out_grad_mem,
                               *in_grad_weight.second, *in_grad_bias.second);
       MKLDNNStream::Get()->RegisterPrim(convBwdWeight.GetBwdWeights());
+      args.insert({MKLDNN_ARG_DIFF_BIAS, *in_grad_bias.second});
       CommitOutput(in_grad[conv::kBias], in_grad_bias);
     }
+    MKLDNNStream::Get()->RegisterArgs(args);
     CommitOutput(in_grad[conv::kWeight], in_grad_weight);
   }
   MKLDNNStream::Get()->Submit();
-#endif
 }
 
 }  // namespace op
 }  // namespace mxnet
 #endif  // MXNET_USE_MKLDNN == 0
-

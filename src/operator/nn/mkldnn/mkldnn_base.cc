@@ -206,7 +206,6 @@ mkldnn_output_t CreateMKLDNNMem(const NDArray &out_arr,
 mkldnn_output_t CreateMKLDNNWeightGrad(const NDArray &out_arr,
                                        const mkldnn::memory::desc &desc,
                                        OpReqType req) {
-#if 0
   if (kAddTo == req) {
     auto tmp = TmpMemMgr::Get()->Alloc(desc);
     return mkldnn_output_t(OutDataOp::AddBack, tmp);
@@ -214,10 +213,8 @@ mkldnn_output_t CreateMKLDNNWeightGrad(const NDArray &out_arr,
     auto tmp = TmpMemMgr::Get()->Alloc(desc);
     return mkldnn_output_t(OutDataOp::CopyBack, tmp);
   } else {
-    auto _desc = desc;
-    auto def_format = GetDefaultFormat(_desc.desc());
     mkldnn::memory *mem = nullptr;
-    if (def_format == _desc.desc().data.format) {
+    if (IsDefaultFormat(desc)) {
       mem = const_cast<NDArray &>(out_arr).CreateMKLDNNData(desc);
     }
     if (mem == nullptr) {
@@ -227,8 +224,6 @@ mkldnn_output_t CreateMKLDNNWeightGrad(const NDArray &out_arr,
       return mkldnn_output_t(OutDataOp::Noop, mem);
     }
   }
-#endif
-      LOG(FATAL)<<"mkldnnv1.0 CreateMKLDNNWeightGrad req "<<(int )req;
 }
 
 void CommitOutput(const NDArray &arr, const mkldnn_output_t &res) {
@@ -540,7 +535,6 @@ void print_diff(const mxnet::NDArray &arr1, const mxnet::NDArray &arr2) {
 template<typename DType>
 static bool SimilarArray(const mxnet::NDArray &arr1, const mxnet::NDArray &arr2,
                          DType rtol, DType atol) {
-#if 0
   if (arr1.shape().Size() != arr2.shape().Size())
     return false;
 
@@ -577,13 +571,10 @@ static bool SimilarArray(const mxnet::NDArray &arr1, const mxnet::NDArray &arr2,
       success.store(false);
   }
   return success.load();
-#endif
-        LOG(FATAL)<<"mkldnnv1.0 SimilarArray";
 }
 
 void OpCheck::Init(const std::vector<mxnet::NDArray> &inputs_,
                    const std::vector<mxnet::NDArray> &outputs_) {
-#if 0                   
   auto ctx = inputs_[0].ctx();
   CHECK(!MKLDNNStream::Get()->HasOps());
   for (size_t i = 0; i < inputs_.size(); i++) {
@@ -603,8 +594,6 @@ void OpCheck::Init(const std::vector<mxnet::NDArray> &inputs_,
     }
   }
   MKLDNNStream::Get()->Submit();
-#endif
-          LOG(FATAL)<<"mkldnnv1.0 Init";
 }
 
 void OpCheck::Run(mxnet::FCompute fn, const nnvm::NodeAttrs &attrs,

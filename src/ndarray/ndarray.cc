@@ -587,31 +587,27 @@ const mkldnn::memory *NDArray::GetMKLDNNDataReorder(
 }
 
 NDArray NDArray::Reorder2Default() const {
-#if 0
   CHECK(storage_type() == kDefaultStorage);
 
   if (ptr_->mkl_mem_ == nullptr)
     return *this;
-  mkldnn_memory_format_t format = ptr_->mkl_mem_->GetDefaultFormat();
-  if (format == ptr_->mkl_mem_->GetFormat())
+  if (!ptr_->mkl_mem_->IsMKLDNN())
     return *this;
 
   // create new ndarray from  mkldnn layout
-  mkldnn::memory::desc from_desc = ptr_->mkl_mem_->GetPrimitiveDesc().desc();
+  mkldnn::memory::desc from_desc = ptr_->mkl_mem_->GetDesc();
   mxnet::TShape tshape(from_desc.data.ndims, -1);
   for (int i = 0; i < from_desc.data.ndims; i++) tshape[i] = from_desc.data.dims[i];
   NDArray ret(tshape, ctx(), false, dtype());
-  mkldnn::memory::primitive_desc def_pd = ptr_->mkl_mem_->GetPrimitiveDesc(format);
-  CHECK(ret.ptr_->shandle.size >= def_pd.get_size());
-  mkldnn::memory def_mem(def_pd, ret.ptr_->shandle.dptr);
+  mkldnn::memory::desc def_desc = ptr_->mkl_mem_->GetDesc();
+  CHECK(ret.ptr_->shandle.size >= def_desc.get_size());
+  mkldnn::memory def_mem(def_desc, CpuEngine::Get()->get_engine(), ret.ptr_->shandle.dptr);
   ptr_->mkl_mem_->ReorderTo(&def_mem);
   // reshape as needed
   ret.shape_ = shape_;
   ret.byte_offset_ = byte_offset_;
   ret.reuse_ = false;
   return ret;
-#endif
-              LOG(FATAL)<<"mkldnnv1.0 Reorder2Default";
 }
 
 void NDArray::Reorder2DefaultAsync() {

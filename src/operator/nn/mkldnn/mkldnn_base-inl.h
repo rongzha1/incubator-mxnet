@@ -648,12 +648,8 @@ class MKLDNNMemory {
   }
 
   void ReorderTo(mkldnn::memory *other) const {
-#if 0   
-    std::vector<mkldnn::primitive> net;
-    net.push_back(mkldnn::reorder(*mem, *other));
-    mkldnn::stream(mkldnn::stream::kind::eager).submit(net).wait();
-#endif
-  LOG(FATAL)<<"mkldnnv1.0 ReorderTo";
+    stream s(CpuEngine::Get()->get_engine());
+    mkldnn::reorder(*mem, *other).execute(s, *mem, *other);
   }
 };
 
