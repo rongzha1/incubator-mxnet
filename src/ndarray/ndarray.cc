@@ -599,7 +599,8 @@ NDArray NDArray::Reorder2Default() const {
   mxnet::TShape tshape(from_desc.data.ndims, -1);
   for (int i = 0; i < from_desc.data.ndims; i++) tshape[i] = from_desc.data.dims[i];
   NDArray ret(tshape, ctx(), false, dtype());
-  mkldnn::memory::desc def_desc = ptr_->mkl_mem_->GetDesc();
+  mkldnn_format_tag_t format = ptr_->mkl_mem_->GetDefaultFormat();
+  mkldnn::memory::desc def_desc = ptr_->mkl_mem_->GetDesc(format);
   CHECK(ret.ptr_->shandle.size >= def_desc.get_size());
   mkldnn::memory def_mem(def_desc, CpuEngine::Get()->get_engine(), ret.ptr_->shandle.dptr);
   ptr_->mkl_mem_->ReorderTo(&def_mem);

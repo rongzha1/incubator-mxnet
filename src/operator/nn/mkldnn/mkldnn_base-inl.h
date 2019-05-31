@@ -602,11 +602,14 @@ class MKLDNNMemory {
   LOG(FATAL)<<"mkldnnv1.0 GetDesc";
   }
 
-  mkldnn::memory::desc GetDesc(mkldnn_format_tag_t format) const {
- #if 0  
-    return mxnet::GetPrimitiveDesc(mem->get_primitive_desc(), format);
- #endif 
-   LOG(FATAL)<<"mkldnnv1.0 GetDesc";
+  mkldnn::memory::desc GetDesc(mkldnn_format_tag_t format_tag) const {
+   auto desc = mem->get_desc();
+   mkldnn::memory::dims dims(desc.data.ndims);
+   for (size_t i = 0; i < dims.size(); i++)
+	 dims[i] = desc.data.dims[i];
+   mkldnn::memory::data_type cpp_type = static_cast<mkldnn::memory::data_type>(desc.data.data_type);
+   mkldnn::memory::desc data_md(dims, cpp_type, static_cast<mkldnn::memory::format_tag>(format_tag));
+   return data_md;
   }
 
   mkldnn_format_tag_t GetDefaultFormat() const {

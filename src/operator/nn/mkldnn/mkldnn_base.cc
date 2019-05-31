@@ -327,118 +327,7 @@ mkldnn_format_tag_t GetDefaultFormat(int num_dims) {
 }
 
 mkldnn_format_tag_t GetDefaultFormat(const mkldnn::memory::desc &desc) {
-#if 0                
-  if (desc.data.ndims == 1) {
-    return desc.data.format;
-  } else if (desc.data.ndims == 2) {
-    if (desc.data.format == mkldnn_io)
-      return mkldnn_oi;
-    else
-      return desc.data.format;
-  } else if (desc.data.ndims == 3) {
-    switch (desc.data.format) {
-      case mkldnn_ncw:
-      case mkldnn_nwc:
-      case mkldnn_nCw8c:
-      case mkldnn_nCw16c:
-        return mkldnn_ncw;
-      case mkldnn_oiw:
-      case mkldnn_wio:
-      case mkldnn_Owi8o:
-      case mkldnn_OIw8i8o:
-      case mkldnn_OIw8o8i:
-      case mkldnn_OIw16i16o:
-      case mkldnn_OIw16o16i:
-      case mkldnn_Oiw16o:
-      case mkldnn_Owi16o:
-      case mkldnn_OIw8i16o2i:
-      case mkldnn_OIw8o16i2o:
-      case mkldnn_IOw16o16i:
-        return mkldnn_oiw;
-      default:
-        LOG(FATAL) << "Unknown MKLDNN format for 3 dimensions: " << desc.data.format;
-        return mkldnn_format_undef;
-    }
-  } else if (desc.data.ndims == 4) {
-    switch (desc.data.format) {
-      case mkldnn_nchw:
-      case mkldnn_nhwc:
-      case mkldnn_chwn:
-      case mkldnn_nChw8c:
-      case mkldnn_nChw16c:
-        return mkldnn_nchw;
-      case mkldnn_oihw:
-      case mkldnn_ihwo:
-      case mkldnn_hwio:
-      case mkldnn_iohw:
-      case mkldnn_oIhw8i:
-      case mkldnn_oIhw16i:
-      case mkldnn_OIhw8i8o:
-      case mkldnn_hwio_s8s8:
-      case mkldnn_OIhw16i16o:
-      case mkldnn_OIhw4i16o4i:
-      case mkldnn_OIhw4i16o4i_s8s8:
-      case mkldnn_OIhw8i16o2i:
-      case mkldnn_OIhw8o16i2o:
-      case mkldnn_OIhw8o8i:
-      case mkldnn_OIhw16o16i:
-      case mkldnn_IOhw16o16i:
-      case mkldnn_Oihw8o:
-      case mkldnn_Oihw16o:
-      case mkldnn_Ohwi8o:
-      case mkldnn_Ohwi16o:
-      case mkldnn_OhIw16o4i:
-        return mkldnn_oihw;
-      case mkldnn_goiw:
-      case mkldnn_gOwi8o:
-      case mkldnn_gOIw8o8i:
-      case mkldnn_gOIw8i8o:
-      case mkldnn_gOIw16i16o:
-      case mkldnn_gOIw16o16i:
-      case mkldnn_gOiw16o:
-      case mkldnn_gOwi16o:
-      case mkldnn_gOIw8i16o2i:
-      case mkldnn_gOIw8o16i2o:
-      case mkldnn_gIOw16o16i:
-        return mkldnn_goiw;
-      default:
-        LOG(FATAL) << "Unknown MKLDNN format for 4 dimensions: " << desc.data.format;
-        return mkldnn_format_undef;
-    }
-  } else if (desc.data.ndims == 5) {
-    switch (desc.data.format) {
-      case mkldnn_goihw:
-      case mkldnn_giohw:
-      case mkldnn_hwigo:
-      case mkldnn_hwigo_s8s8:
-      case mkldnn_gOIhw8i8o:
-      case mkldnn_gOIhw16i16o:
-      case mkldnn_gOIhw4i16o4i:
-      case mkldnn_gOIhw4i16o4i_s8s8:
-      case mkldnn_gOIhw8i16o2i:
-      case mkldnn_gOIhw8o16i2o:
-      case mkldnn_gOIhw8o8i:
-      case mkldnn_gOIhw16o16i:
-      case mkldnn_gIOhw16o16i:
-      case mkldnn_gOihw8o:
-      case mkldnn_Goihw8g:
-      case mkldnn_gOihw16o:
-      case mkldnn_Goihw16g:
-      case mkldnn_gOhwi8o:
-      case mkldnn_gOhwi16o:
-      case mkldnn_gOhIw16o4i:
-      case mkldnn_Goihw16g_s8s8:
-        return mkldnn_goihw;
-      default:
-        LOG(FATAL) << "Unknown MKLDNN format for 5 dimensions: " << desc.data.format;
-        return mkldnn_format_undef;
-    }
-  } else {
-    LOG(FATAL) << "Unsupported dimensions: " << desc.data.ndims;
-    return mkldnn_format_undef;
-  }
-#endif
-    LOG(FATAL)<<"mkldnnv1.0 GetDefaultFormat";
+  return GetDefaultFormat(desc.data.ndims);
 }
 
 bool IsDefaultFormat(const mkldnn::memory::desc &desc) {
@@ -614,6 +503,19 @@ void OpCheck::Run(mxnet::FCompute fn, const nnvm::NodeAttrs &attrs,
   fn(attrs, ctx, in_blobs, req, out_blobs);
 
   LOG(INFO) << "test " << attrs.op->name;
+  for(size_t i = 0; i < in_blobs.size(); i++) {
+    float* pIn = (float*)in_blobs[i].dptr_;
+    for(size_t j = 0; j < 10; j++) {
+       LOG(INFO) <<"op name "<< attrs.op->name << " input ["<<i<<"]["<<j<<"] is "<<pIn[j];
+    }
+  }
+  for(size_t i = 0; i < out_blobs.size(); i++) {
+    float* pOut = (float*)out_blobs[i].dptr_;
+    for(size_t j = 0; j < 10; j++) {
+       LOG(INFO) <<"op name "<< attrs.op->name << " output ["<<i<<"]["<<j<<"] is "<<pOut[j];
+    }
+  }
+
   size_t num = std::min(outputs.size(), outputs_.size());
   num = std::min(num_checks, num);
   for (size_t i = 0; i < num; i++) {
