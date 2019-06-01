@@ -283,23 +283,20 @@ MKLDNNPoolingBwd::MKLDNNPoolingBwd(
 void MKLDNNPoolingBwd::SetNewMem(const mxnet::NDArray *workspace,
                                  const mxnet::NDArray &out_grad,
                                  const mkldnn::memory *diff_src_mem) {
-#if 0
+  const mkldnn::engine engine = CpuEngine::Get()->get_engine();
   if (bwd == nullptr) {
     diff_dst.reset(
-        new mkldnn::memory(out_grad.GetMKLDNNData()->get_primitive_desc(),
+        new mkldnn::memory(out_grad.GetMKLDNNData()->get_desc(), engine,
                            out_grad.GetMKLDNNData()->get_data_handle()));
-    diff_src.reset(new mkldnn::memory(pd.diff_src_primitive_desc(),
+    diff_src.reset(new mkldnn::memory(pd.diff_src_desc(), engine,
                                       diff_src_mem->get_data_handle()));
     if (with_workspace) {
       CHECK(workspace != nullptr);
       ws.reset(
-          new mkldnn::memory(workspace->GetMKLDNNData()->get_primitive_desc(),
+          new mkldnn::memory(workspace->GetMKLDNNData()->get_desc(), engine,
                              workspace->GetMKLDNNData()->get_data_handle()));
-      bwd.reset(
-          new pooling_backward(pd, *diff_dst, primitive::at(*ws), *diff_src));
-    } else {
-      bwd.reset(new pooling_backward(pd, *diff_dst, *diff_src));
     }
+    bwd.reset(new pooling_backward(pd));
   } else {
     diff_dst->set_data_handle(out_grad.GetMKLDNNData()->get_data_handle());
     diff_src->set_data_handle(diff_src_mem->get_data_handle());
@@ -308,7 +305,6 @@ void MKLDNNPoolingBwd::SetNewMem(const mxnet::NDArray *workspace,
       ws->set_data_handle(workspace->GetMKLDNNData()->get_data_handle());
     }
   }
-#endif
 }
 
 const mkldnn::pooling_backward &MKLDNNPoolingBwd::GetBwd() {
@@ -319,7 +315,6 @@ MKLDNNPoolingBwd &GetPoolingBwd(const PoolingParam &param,
                                 const NDArray &in_data,
                                 const NDArray &in_grad,
                                 const NDArray &out_grad) {
-#if 0
 #if DMLC_CXX11_THREAD_LOCAL
   static thread_local
       std::unordered_map<MKLDNNPoolingSignature,
@@ -340,25 +335,24 @@ MKLDNNPoolingBwd &GetPoolingBwd(const PoolingParam &param,
   if (it == pooling_bwds.end()) {
     auto diff_dst_mem = out_grad.GetMKLDNNData();
     auto input_mem = in_data.GetMKLDNNData();
-    mkldnn::memory::primitive_desc data_mpd = input_mem->get_primitive_desc();
-    const mkldnn::memory::desc data_md = data_mpd.desc();
+    const mkldnn::memory::desc data_md = input_mem->get_desc();
     const memory::dims dims = {data_md.data.dims[0], data_md.data.dims[1],
                                static_cast<int>(out_grad.shape()[2]),
                                static_cast<int>(out_grad.shape()[3])};
     const memory::desc out_md(
         {dims}, static_cast<memory::data_type>(data_md.data.data_type),
-        static_cast<memory::format>(data_md.data.format));
+        mkldnn::memory::format_tag::any);
     auto fwd_pd = GetPoolingFwdPdesc(param, true, data_md, out_md);
 
     const mkldnn::memory::desc diff_md =
-        diff_dst_mem->get_primitive_desc().desc();
+        diff_dst_mem->get_desc();
     const memory::dims dims1 = {diff_md.data.dims[0], diff_md.data.dims[1],
                                 static_cast<int>(in_grad.shape()[2]),
                                 static_cast<int>(in_grad.shape()[3])};
     const memory::desc diff_in_md(
         {dims1}, static_cast<memory::data_type>(diff_md.data.data_type),
-        static_cast<memory::format>(diff_md.data.format));
-    const mkldnn::engine cpu_engine = data_mpd.get_engine();
+        mkldnn::memory::format_tag::any);
+    const mkldnn::engine cpu_engine = CpuEngine::Get()->get_engine();;
     const mkldnn::algorithm alg = GetMKLDNNPoolAlgo(param);
 
     int kernel_h_, kernel_w_;
@@ -393,14 +387,12 @@ MKLDNNPoolingBwd &GetPoolingBwd(const PoolingParam &param,
     it = AddToCache(&pooling_bwds, key, bwd);
   }
   return it->second;
-#endif
 }
 
 void MKLDNNPoolingGradCompute(const OpContext &ctx, const PoolingParam &param,
                               const NDArray &out_grad, const NDArray &in_data,
                               const NDArray *workspace, const OpReqType req,
                               const NDArray &in_grad) {
-#if 0
   if (req == kNullOp) {
     return;
   }
@@ -408,13 +400,15 @@ void MKLDNNPoolingGradCompute(const OpContext &ctx, const PoolingParam &param,
 
   auto &bwd = GetPoolingBwd(param, in_data, in_grad, out_grad);
   auto diff_src_mem =
-      CreateMKLDNNMem(in_grad, bwd.pd.diff_src_primitive_desc(), req);
+      CreateMKLDNNMem(in_grad, bwd.pd.diff_src_desc(), req);
 
   bwd.SetNewMem(workspace, out_grad, diff_src_mem.second);
   MKLDNNStream::Get()->RegisterPrim(bwd.GetBwd());
+  MKLDNNStream::Get()->RegisterArgs({ { MKLDNN_ARG_DIFF_DST, *(out_grad.GetMKLDNNData()) },
+            { MKLDNN_ARG_DIFF_SRC, *diff_src_mem.second },
+            { MKLDNN_ARG_WORKSPACE, *(workspace->GetMKLDNNData()) } });
   CommitOutput(in_grad, diff_src_mem);
   MKLDNNStream::Get()->Submit();
-#endif
 }
 
 }  // namespace op
