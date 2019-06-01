@@ -101,10 +101,16 @@ void MKLDNNPoolingFwd::SetNewMem(const NDArray& in_data,
 }
 
 void MKLDNNPoolingFwd::Execute(const NDArray& out_data) {
+  std::unordered_map<int, memory> args = {
+      {MKLDNN_ARG_SRC, *(this->data_) },
+      {MKLDNN_ARG_DST, *(this->output_mem_t_.second) },
+  };
+  if (this->with_workspace_) {
+    args.insert( { MKLDNN_ARG_WORKSPACE, *(this->workspace_) });
+  }
   if (this->fwd_) {
     MKLDNNStream::Get()->RegisterPrim(*(this->fwd_));
-	  MKLDNNStream::Get()->RegisterArgs({ { MKLDNN_ARG_SRC, *data_ },
-			{ MKLDNN_ARG_DST, *(this->output_mem_t_.second) } });
+    MKLDNNStream::Get()->RegisterArgs(args);
     CommitOutput(out_data, this->output_mem_t_);
     MKLDNNStream::Get()->Submit();
   } else {
