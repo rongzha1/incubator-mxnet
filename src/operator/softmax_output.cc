@@ -24,7 +24,7 @@
  * \author Bing Xu, Zhang Rong A
 */
 #include "./softmax_output-inl.h"
-#if MXNET_USE_MKLDNN == 0
+#if MXNET_USE_MKLDNN == 1
 #include "./nn/mkldnn/mkldnn_ops-inl.h"
 #endif
 namespace mxnet {
@@ -121,7 +121,7 @@ static bool SoftmaxOutputShape(const nnvm::NodeAttrs& attrs,
   return true;
 }
 
-#if MXNET_USE_MKLDNN == 0
+#if MXNET_USE_MKLDNN == 1
 inline static bool SoftmaxOutputStorageType(const nnvm::NodeAttrs& attrs,
                                             const int dev_mask,
                                             DispatchMode* dispatch_mode,
@@ -231,7 +231,7 @@ NNVM_REGISTER_OP(SoftmaxOutput)
 .set_num_inputs(2)
 .set_num_outputs(1)
 .set_attr_parser(ParamParser<SoftmaxOutputParam>)
-#if MXNET_USE_MKLDNN == 0
+#if MXNET_USE_MKLDNN == 1
 .set_attr<FInferStorageType>("FInferStorageType", SoftmaxOutputStorageType)
 .set_attr<bool>("TIsMKLDNN", true)
 .set_attr<FComputeEx>("FComputeEx<cpu>", SoftmaxOutputComputeExCPU)

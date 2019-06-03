@@ -23,7 +23,7 @@
  * \author Zhang Rong A
 */
 
-#if MXNET_USE_MKLDNN == 0
+#if MXNET_USE_MKLDNN == 1
 #include "../../softmax_output-inl.h"
 #include "./mkldnn_ops-inl.h"
 #include "./mkldnn_base-inl.h"
@@ -34,8 +34,7 @@ namespace op {
 static mkldnn::softmax_forward::primitive_desc GetSoftmaxOutputFwdDescImpl(
                const SoftmaxOutputParam& param, bool is_train,
                const int axis, const mkldnn::memory &input_mem) {
-  mkldnn::memory::primitive_desc data_mpd = input_mem.get_primitive_desc();
-  mkldnn::memory::desc data_md = data_mpd.desc();
+  mkldnn::memory::desc data_md = input_mem.get_desc();
   auto cpu_engine = CpuEngine::Get()->get_engine();
   auto prop = is_train ? mkldnn::prop_kind::forward_training
                        : mkldnn::prop_kind::forward_scoring;
@@ -59,22 +58,22 @@ class MKLDNNSoftmaxOutputFwd {
   }
 
   void SetNewMem(const mkldnn::memory &data, const mkldnn::memory &output) {
+    auto cpu_engine = CpuEngine::Get()->get_engine();
     if (this->data_ == nullptr)
       this->data_ = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-        data.get_primitive_desc(), data.get_data_handle()));
+        data.get_desc(), cpu_engine, data.get_data_handle()));
     else
       this->data_->set_data_handle(data.get_data_handle());
 
     if (this->out_ == nullptr)
       this->out_ = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-        output.get_primitive_desc(), output.get_data_handle()));
+        output.get_desc(), cpu_engine, output.get_data_handle()));
     else
       this->out_->set_data_handle(output.get_data_handle());
 
     if (this->fwd_ == nullptr) {
       this->fwd_ = std::shared_ptr<mkldnn::softmax_forward>(
-        new mkldnn::softmax_forward(fwd_pd, mkldnn::primitive::at(*this->data_),
-        *this->out_));
+        new mkldnn::softmax_forward(fwd_pd));
     }
   }
 
@@ -129,13 +128,14 @@ void MKLDNNSoftmaxOutputForward(const nnvm::NodeAttrs& attrs,
 
   auto input_mem = idata.GetMKLDNNData();
   auto out_mem = CreateMKLDNNMem(out_data[softmaxout_enum::kOut],
-                                 input_mem->get_primitive_desc(), req[softmaxout_enum::kOut]);
+                                 input_mem->get_desc(), req[softmaxout_enum::kOut]);
 
   MKLDNNSoftmaxOutputFwd &fwd = GetSoftmaxOutputForward(param, ctx, idata);
   fwd.SetNewMem(*input_mem, *out_mem.second);
 
   MKLDNNStream *stream = MKLDNNStream::Get();
   stream->RegisterPrim(fwd.GetFwd());
+  stream->RegisterArgs({{MKLDNN_ARG_SRC, *input_mem}, {MKLDNN_ARG_DST, *out_mem.second}});
 
   CommitOutput(out_data[softmaxout_enum::kOut], out_mem);
   stream->Submit();
