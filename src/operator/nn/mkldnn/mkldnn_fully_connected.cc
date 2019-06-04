@@ -24,7 +24,7 @@
  * \author Da Zheng, Ciyong Chen
 */
 
-#if MXNET_USE_MKLDNN == 0
+#if MXNET_USE_MKLDNN == 1
 #include "mkldnn_fully_connected-inl.h"
 
 namespace mxnet {
@@ -48,7 +48,7 @@ mkldnn::inner_product_forward::primitive_desc GetFCFwdImpl(
     const float scale = 1.0f;
     const float alpha = 0.0f;
     const float beta = 1.0f;
-    ops.append_eltwise(scale, eltwise_relu, alpha, beta);
+    ops.append_eltwise(scale, mkldnn::algorithm::eltwise_relu, alpha, beta);
   }
   attr.set_post_ops(ops);
 
@@ -67,7 +67,6 @@ mkldnn::inner_product_forward::primitive_desc GetFCFwdImpl(
       }
 
       attr.set_output_scales(mask, scales);
-      attr.set_int_output_round_mode(round_nearest);
     }
   }
 
@@ -134,44 +133,36 @@ void MKLDNNFullyConnectedForward::SetNewMem(const mkldnn::memory &data,
                                             const mkldnn::memory &weight,
                                             const mkldnn::memory *bias,
                                             const mkldnn::memory &output) {
+  auto engine = CpuEngine::Get()->get_engine();
   if (this->data_ == nullptr)
     this->data_ = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-            fwd_pd.src_primitive_desc(), data.get_data_handle()));
+        fwd_pd.src_desc(), engine, data.get_data_handle()));
   else
     this->data_->set_data_handle(data.get_data_handle());
 
   if (this->weight_ == nullptr)
     this->weight_ = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-            fwd_pd.weights_primitive_desc(), weight.get_data_handle()));
+        fwd_pd.weights_desc(), engine, weight.get_data_handle()));
   else
     this->weight_->set_data_handle(weight.get_data_handle());
 
   if (this->out_ == nullptr)
     this->out_ = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-            fwd_pd.dst_primitive_desc(), output.get_data_handle()));
+        fwd_pd.dst_desc(), engine, output.get_data_handle()));
   else
     this->out_->set_data_handle(output.get_data_handle());
 
   if (bias != nullptr) {
     if (this->bias_ == nullptr)
       this->bias_ = std::shared_ptr<mkldnn::memory>(new mkldnn::memory(
-      fwd_pd.bias_primitive_desc(), bias->get_data_handle()));
+          fwd_pd.bias_desc(), engine, bias->get_data_handle()));
     else
       this->bias_->set_data_handle(bias->get_data_handle());
-
-    if (this->fwd_ == nullptr)
-      this->fwd_ = std::shared_ptr<mkldnn::inner_product_forward>(
-          new mkldnn::inner_product_forward(
-              fwd_pd, mkldnn::primitive::at(*this->data_),
-              mkldnn::primitive::at(*this->weight_),
-              mkldnn::primitive::at(*this->bias_), *this->out_));
-  } else {
-     if (this->fwd_ == nullptr) {
-      this->fwd_ = std::shared_ptr<mkldnn::inner_product_forward>(
-          new mkldnn::inner_product_forward(
-              fwd_pd, mkldnn::primitive::at(*this->data_),
-              mkldnn::primitive::at(*this->weight_), *this->out_));
-    }
+  }
+  if (this->fwd_ == nullptr)
+  {
+    this->fwd_ = std::shared_ptr<mkldnn::inner_product_forward>(
+        new mkldnn::inner_product_forward(fwd_pd));
   }
 }
 
@@ -223,13 +214,13 @@ void MKLDNNFCFlattenData(const FullyConnectedParam &param,
       mkldnn::memory::dims out_dims{static_cast<int>(oshape.ProdShape(0, oshape.ndim()-1)),
         static_cast<int>(oshape[ishape.ndim()-1])};
       *out_md = mkldnn::memory::desc(out_dims, get_mkldnn_type(out_data.dtype()),
-        mkldnn::memory::format::any);
+                                     mkldnn::memory::format_tag::any);
     } else {
       *in_data = in_data->MKLDNNDataReshape(Shape2(ishape[0], ishape.ProdShape(1, ishape.ndim())));
       mkldnn::memory::dims out_dims{static_cast<int>(oshape[0]),
         static_cast<int>(oshape.ProdShape(1, oshape.ndim()))};
       *out_md = mkldnn::memory::desc(out_dims, get_mkldnn_type(out_data.dtype()),
-        mkldnn::memory::format::any);
+                                     mkldnn::memory::format_tag::any);
     }
   }
 }
@@ -244,32 +235,40 @@ void MKLDNNFCForwardFullFeature(const MKLDNNFCFullParam &full_param,
   NDArray weight = in_data[fullc::kWeight];
   NDArray data = in_data[fullc::kData];
 
-  auto data_mem = data.GetMKLDNNDataReorder(fwd->fwd_pd.src_primitive_desc());
+  auto data_mem = data.GetMKLDNNDataReorder(fwd->fwd_pd.src_desc());
   const mkldnn::memory *weight_mem;
   if (ctx.is_train) {
     if (weight.IsMKLDNNData()) {
       weight.Reorder2DefaultAsync();
     }
-    weight_mem = GetWeights(weight, fwd->fwd_pd.weights_primitive_desc(), 1);
+    weight_mem = GetWeights(weight, fwd->fwd_pd.weights_desc(), 1);
   } else {
     if (weight.IsDefaultData()) {
-      weight_mem = GetWeights(weight, fwd->fwd_pd.weights_primitive_desc(), 1);
-      weight.MKLDNNDataReorderAsync(fwd->fwd_pd.weights_primitive_desc());
+      weight_mem = GetWeights(weight, fwd->fwd_pd.weights_desc(), 1);
+      weight.MKLDNNDataReorderAsync(fwd->fwd_pd.weights_desc());
     } else {
       weight_mem = weight.GetMKLDNNData();
-      CHECK(weight_mem->get_primitive_desc() == fwd->fwd_pd.weights_primitive_desc());
+      CHECK(weight_mem->get_desc() == fwd->fwd_pd.weights_desc());
     }
   }
   auto out_mem = CreateMKLDNNMem(out_data[fullc::kOut],
-      fwd->fwd_pd.dst_primitive_desc(), req[fullc::kOut], &data);
+                                 fwd->fwd_pd.dst_desc(), req[fullc::kOut], &data);
+
+  std::unordered_map<int, memory> args = {
+      {MKLDNN_ARG_SRC, *data_mem},
+      {MKLDNN_ARG_WEIGHTS, *weight_mem},
+      {MKLDNN_ARG_DST, *out_mem.second},
+  };
   if (!full_param.default_param.no_bias) {
     auto bias_mem = in_data[fullc::kBias].GetMKLDNNDataReorder(
-        fwd->fwd_pd.bias_primitive_desc());
+        fwd->fwd_pd.bias_desc());
     fwd->SetNewMem(*data_mem, *weight_mem, bias_mem, *out_mem.second);
+    args.insert({ MKLDNN_ARG_BIAS, *bias_mem});
   } else {
     fwd->SetNewMem(*data_mem, *weight_mem, nullptr, *out_mem.second);
   }
   MKLDNNStream::Get()->RegisterPrim(fwd->GetFwd());
+  MKLDNNStream::Get()->RegisterArgs(args);
   CommitOutput(out_data[fullc::kOut], out_mem);
   MKLDNNStream::Get()->Submit();
 }
@@ -302,6 +301,7 @@ void MKLDNNFCBackward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
                       const std::vector<NDArray> &inputs,
                       const std::vector<OpReqType> &req,
                       const std::vector<NDArray> &outputs) {
+#if 0
   TmpMemMgr::Get()->Init(ctx.requested[fullc::kTempSpace]);
   const std::vector<NDArray> &in_grad = outputs;
   MKLDNNFCFullParam full_param;
@@ -371,6 +371,7 @@ void MKLDNNFCBackward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
     CommitOutput(in_grad[fullc::kBias], in_grad_bias);
   }
   MKLDNNStream::Get()->Submit();
+#endif
 }
 
 }  // namespace op

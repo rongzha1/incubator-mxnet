@@ -599,7 +599,6 @@ class MKLDNNMemory {
 
   mkldnn::memory::desc GetDesc() const {
     return mem->get_desc();
-  LOG(FATAL)<<"mkldnnv1.0 GetDesc";
   }
 
   mkldnn::memory::desc GetDesc(mkldnn_format_tag_t format_tag) const {

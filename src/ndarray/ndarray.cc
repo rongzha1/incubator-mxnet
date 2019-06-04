@@ -201,43 +201,45 @@ NDArray::NDArray(const std::shared_ptr<mkldnn::memory> &mkldnn_mem)
 }
 
 NDArray NDArray::MKLDNNDataReshape(const mxnet::TShape &shape) const {
-#if 0    
   CHECK(!is_none()) << "NDArray is not initialized";
   CHECK_GE(shape_.Size(), shape.Size())
-    << "NDArray.Reshape: target shape size is larger current shape";
+      << "NDArray.Reshape: target shape size is larger current shape";
   CHECK_EQ(storage_type(), kDefaultStorage);
-  if (!IsMKLDNNData()) {
+  if (!IsMKLDNNData())
+  {
     NDArray ret = this->Detach();
     ret.shape_ = shape;
     return ret;
-  } else {
+  }
+  else
+  {
     NDArray ret(shape, ctx(), true, dtype());
     // We shouldn't submit the reorder primitive here because submit will
     // be called in operators.
-    mkldnn_memory_format_t format = ptr_->mkl_mem_->GetDefaultFormat();
-    CHECK_NE(format, ptr_->mkl_mem_->GetFormat());
-    mkldnn::memory::primitive_desc def_pd = ptr_->mkl_mem_->GetPrimitiveDesc(format);
-    mkldnn::memory *def_mem = TmpMemMgr::Get()->Alloc(def_pd);
+    mkldnn_format_tag_t format_tag = ptr_->mkl_mem_->GetDefaultFormat();
+    CHECK(ptr_->IsMKLDNN());
+    mkldnn::memory::desc def_desc = ptr_->mkl_mem_->GetDesc(format_tag);
+    mkldnn::memory *def_mem = TmpMemMgr::Get()->Alloc(def_desc);
     MKLDNNStream *stream = MKLDNNStream::Get();
     std::shared_ptr<mkldnn::memory> curr_mem = ptr_->mkl_mem_->GetMem();
     stream->RegisterMem(curr_mem);
     stream->RegisterPrim(mkldnn::reorder(*curr_mem, *def_mem));
+    stream->RegisterArgs({{MKLDNN_ARG_FROM, *curr_mem},
+                          {MKLDNN_ARG_TO, *def_mem}});
     // def_mem points to a memory region in the temp space. It's only valid
     // inside an operator. As such, the returned NDArray can only be valid
     // inside an operator and the shared point doesn't need to do anything
     // when it's destroyed.
-    auto tmp = std::shared_ptr<mkldnn::memory>(def_mem, [](mkldnn::memory *mem){});
+    auto tmp = std::shared_ptr<mkldnn::memory>(def_mem, [](mkldnn::memory *mem) {});
     ret.ptr_->mkl_mem_.reset(new MKLDNNMemory(tmp));
     ret.ptr_->shandle.dptr = def_mem->get_data_handle();
-    ret.ptr_->shandle.size = def_mem->get_primitive_desc().get_size();
+    ret.ptr_->shandle.size = def_mem->get_desc().get_size();
     ret.ptr_->delay_alloc = false;
     ret.ptr_->static_data = true;
     ret.byte_offset_ = byte_offset_;
     ret.reuse_ = false;
     return ret;
   }
-#endif
-      LOG(FATAL)<<"mkldnnv1.0 MKLDNNDataReshape";
 }
 
 #endif
