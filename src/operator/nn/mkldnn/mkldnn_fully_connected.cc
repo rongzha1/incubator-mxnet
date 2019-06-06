@@ -272,7 +272,7 @@ void MKLDNNFCForwardFullFeature(const MKLDNNFCFullParam &full_param,
   CommitOutput(out_data[fullc::kOut], out_mem);
   MKLDNNStream::Get()->Submit();
 }
-
+ 
 void MKLDNNFCForward(const nnvm::NodeAttrs &attrs, const OpContext &ctx,
                      const std::vector<NDArray> &in_data,
                      const std::vector<OpReqType> &req,
@@ -301,7 +301,6 @@ void MKLDNNFCBackward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
                       const std::vector<NDArray> &inputs,
                       const std::vector<OpReqType> &req,
                       const std::vector<NDArray> &outputs) {
-#if 0
   TmpMemMgr::Get()->Init(ctx.requested[fullc::kTempSpace]);
   const std::vector<NDArray> &in_grad = outputs;
   MKLDNNFCFullParam full_param;
@@ -336,13 +335,16 @@ void MKLDNNFCBackward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
     mkldnn::inner_product_backward_data::primitive_desc ipBwdData_pd = GetFCBwdData(
         data, weight, out_grad, fwd_pd);
     auto out_grad_mem = out_grad.GetMKLDNNDataReorder(
-        ipBwdData_pd.diff_dst_primitive_desc());
-    auto weight_mem = weight.GetMKLDNNDataReorder(ipBwdData_pd.weights_primitive_desc());
+        ipBwdData_pd.diff_dst_desc());
+    auto weight_mem = weight.GetMKLDNNDataReorder(ipBwdData_pd.weights_desc());
     auto in_grad_mem = CreateMKLDNNMem(in_grad[fullc::kData],
-                                       ipBwdData_pd.diff_src_primitive_desc(),
+                                       ipBwdData_pd.diff_src_desc(),
                                        req[fullc::kData]);
-    MKLDNNStream::Get()->RegisterPrim(mkldnn::inner_product_backward_data(
-          ipBwdData_pd, *out_grad_mem, *weight_mem, *in_grad_mem.second));
+    MKLDNNStream::Get()->RegisterPrim(mkldnn::inner_product_backward_data(ipBwdData_pd));
+    MKLDNNStream::Get()->RegisterArgs({
+                {MKLDNN_ARG_DIFF_DST, *out_grad_mem},
+                {MKLDNN_ARG_WEIGHTS, *weight_mem},
+                {MKLDNN_ARG_DIFF_SRC, *in_grad_mem.second}});
     CommitOutput(in_grad[fullc::kData], in_grad_mem);
   }
   if (req[fullc::kWeight]) {
@@ -350,28 +352,30 @@ void MKLDNNFCBackward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
       = GetFCBwdWeights(data, weight, param.no_bias ? nullptr : &in_grad[fullc::kBias],
           out_grad, fwd_pd);
     auto out_grad_mem = out_grad.GetMKLDNNDataReorder(
-        ipBwdWeights_pd.diff_dst_primitive_desc());
-    auto data_mem = data.GetMKLDNNDataReorder(ipBwdWeights_pd.src_primitive_desc());
+        ipBwdWeights_pd.diff_dst_desc());
+    auto data_mem = data.GetMKLDNNDataReorder(ipBwdWeights_pd.src_desc());
     auto in_grad_weight = CreateMKLDNNWeightGrad(in_grad[fullc::kWeight],
-                                                 ipBwdWeights_pd.diff_weights_primitive_desc(),
+                                                 ipBwdWeights_pd.diff_weights_desc(),
                                                  req[fullc::kWeight]);
+    std::unordered_map<int, memory> args = {
+      {MKLDNN_ARG_DIFF_DST, *out_grad_mem},
+      {MKLDNN_ARG_SRC, *data_mem},
+      {MKLDNN_ARG_DIFF_WEIGHTS, *in_grad_weight.second},
+    };
+
     mkldnn_output_t in_grad_bias;
-    if (param.no_bias) {
-      MKLDNNStream::Get()->RegisterPrim(mkldnn::inner_product_backward_weights(
-            ipBwdWeights_pd, *data_mem, *out_grad_mem, *in_grad_weight.second));
-    } else {
+    if (!param.no_bias) {
       in_grad_bias = CreateMKLDNNMem(in_grad[fullc::kBias],
-                                     ipBwdWeights_pd.diff_bias_primitive_desc(),
+                                     ipBwdWeights_pd.diff_bias_desc(),
                                      req[fullc::kBias]);
-      MKLDNNStream::Get()->RegisterPrim(mkldnn::inner_product_backward_weights(
-            ipBwdWeights_pd, *data_mem, *out_grad_mem, *in_grad_weight.second,
-            *in_grad_bias.second));
+      args.insert({MKLDNN_ARG_DIFF_BIAS, *in_grad_bias.second});
     }
+    MKLDNNStream::Get()->RegisterPrim(mkldnn::inner_product_backward_weights(ipBwdWeights_pd));
+    MKLDNNStream::Get()->RegisterArgs(args);
     CommitOutput(in_grad[fullc::kWeight], in_grad_weight);
     CommitOutput(in_grad[fullc::kBias], in_grad_bias);
   }
   MKLDNNStream::Get()->Submit();
-#endif
 }
 
 }  // namespace op
