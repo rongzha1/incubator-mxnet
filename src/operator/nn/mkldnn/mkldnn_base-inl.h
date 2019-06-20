@@ -405,7 +405,6 @@ static inline bool SameFormat(
     mkldnn::memory::desc desc_a, mkldnn::memory::desc desc_b) {
   bool rslt = false;
   int i = 0;
-  int j = 0;
   if(desc_a.data.format_kind == desc_b.data.format_kind
      && desc_a.data.ndims == desc_b.data.ndims) {
     switch(desc_a.data.format_kind) {
