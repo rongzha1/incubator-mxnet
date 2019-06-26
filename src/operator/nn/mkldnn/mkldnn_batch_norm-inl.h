@@ -44,7 +44,7 @@ typedef mkldnn::batch_normalization_forward::desc               t_bn_f_desc;
 typedef mkldnn::batch_normalization_backward::primitive_desc    t_bn_b_pdesc;
 typedef mkldnn::batch_normalization_backward::desc              t_bn_b_desc;
 
-using bn_flg = mkldnn::batch_normalization_flags;
+using bn_flg = mkldnn::normalization_flags;
 using prop_kind = mkldnn::prop_kind;
 
 inline static unsigned _GetFlags(const std::vector<NDArray> &in_data,

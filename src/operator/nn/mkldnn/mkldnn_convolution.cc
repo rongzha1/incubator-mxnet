@@ -129,13 +129,11 @@ mkldnn::convolution_forward::primitive_desc GetConvFwdImpl(const MKLDNNConvFullP
 
   if (param.conv_param.dilate.ndim() == 0 && bias_md_ptr == nullptr) {
     mkldnn::convolution_forward::desc desc(prop, mkldnn::algorithm::convolution_direct, data_md,
-                                           weight_md, out_md, strides, padding, padding,
-                                           mkldnn::padding_kind::zero);
+                                           weight_md, out_md, strides, padding, padding);
     return GetConvFwdPd(desc);
   } else if (param.conv_param.dilate.ndim() == 0) {
     mkldnn::convolution_forward::desc desc(prop, mkldnn::algorithm::convolution_direct, data_md,
-                                           weight_md, *bias_md_ptr, out_md, strides, padding,
-                                           padding, mkldnn::padding_kind::zero);
+                                           weight_md, *bias_md_ptr, out_md, strides, padding, padding);
     return GetConvFwdPd(desc);
   } else {
     mkldnn::memory::dims dilates(param.conv_param.kernel.ndim());
@@ -150,13 +148,12 @@ mkldnn::convolution_forward::primitive_desc GetConvFwdImpl(const MKLDNNConvFullP
     }
     if (bias_md_ptr == nullptr) {
       mkldnn::convolution_forward::desc desc(prop, mkldnn::algorithm::convolution_direct, data_md,
-                                             weight_md, out_md, strides, dilates, padding, padding,
-                                             mkldnn::padding_kind::zero);
+                                             weight_md, out_md, strides, dilates, padding, padding);
       return GetConvFwdPd(desc);
     } else {
       mkldnn::convolution_forward::desc desc(prop, mkldnn::algorithm::convolution_direct, data_md,
                                              weight_md, *bias_md_ptr, out_md, strides, dilates,
-                                             padding, padding, mkldnn::padding_kind::zero);
+                                             padding, padding);
       return GetConvFwdPd(desc);
     }
   }
@@ -197,7 +194,7 @@ static mkldnn::convolution_backward_data::primitive_desc GetConvBwdData(
   // select suboptimal kernel for computation according to tensor sizes.
   if (param.dilate.ndim() == 0) {
     mkldnn::convolution_backward_data::desc desc(mkldnn::algorithm::convolution_direct,
-        data_md, weight_md, out_md, strides, padding, padding, mkldnn::padding_kind::zero);
+        data_md, weight_md, out_md, strides, padding, padding);
     auto conv_pd = mkldnn::convolution_backward_data::primitive_desc(desc, engine, fwd_pd);
     while (conv_pd.diff_dst_desc().get_size() != GetArraySize(output) ||
            conv_pd.diff_src_desc().get_size() != GetArraySize(data) ||
@@ -217,8 +214,7 @@ static mkldnn::convolution_backward_data::primitive_desc GetConvBwdData(
                  << param.dilate.ndim() << ", supporting only 1 or 2.";
     }
     mkldnn::convolution_backward_data::desc desc(mkldnn::algorithm::convolution_direct,
-        data_md, weight_md, out_md, strides, dilates, padding, padding,
-        mkldnn::padding_kind::zero);
+        data_md, weight_md, out_md, strides, dilates, padding, padding);
     auto conv_pd = mkldnn::convolution_backward_data::primitive_desc(desc, engine, fwd_pd);
     while (conv_pd.diff_dst_desc().get_size() != GetArraySize(output) ||
            conv_pd.diff_src_desc().get_size() != GetArraySize(data) ||
@@ -265,7 +261,7 @@ static mkldnn::convolution_backward_weights::primitive_desc GetConvBwdWeights(
   // select suboptimal kernel for computation according to tensor sizes.
   if (param.dilate.ndim() == 0 && bias == nullptr) {
     mkldnn::convolution_backward_weights::desc desc(mkldnn::algorithm::convolution_direct,
-        data_md, weight_md, out_md, strides, padding, padding, mkldnn::padding_kind::zero);
+        data_md, weight_md, out_md, strides, padding, padding);
     auto conv_pd = mkldnn::convolution_backward_weights::primitive_desc(desc, engine, fwd_pd);
     while (conv_pd.diff_dst_desc().get_size() != GetArraySize(output) ||
            conv_pd.src_desc().get_size() != GetArraySize(data) ||
@@ -276,8 +272,7 @@ static mkldnn::convolution_backward_weights::primitive_desc GetConvBwdWeights(
   } else if (param.dilate.ndim() == 0) {
     auto bias_md = GetMemDesc(*bias);
     mkldnn::convolution_backward_weights::desc desc(mkldnn::algorithm::convolution_direct,
-        data_md, weight_md, bias_md, out_md, strides, padding, padding,
-        mkldnn::padding_kind::zero);
+        data_md, weight_md, bias_md, out_md, strides, padding, padding);
     auto conv_pd = mkldnn::convolution_backward_weights::primitive_desc(desc, engine, fwd_pd);
     while (conv_pd.diff_dst_desc().get_size() != GetArraySize(output) ||
            conv_pd.src_desc().get_size() != GetArraySize(data) ||
@@ -298,8 +293,7 @@ static mkldnn::convolution_backward_weights::primitive_desc GetConvBwdWeights(
     }
     if (bias == nullptr) {
       mkldnn::convolution_backward_weights::desc desc(mkldnn::algorithm::convolution_direct,
-          data_md, weight_md, out_md, strides, dilates, padding, padding,
-          mkldnn::padding_kind::zero);
+          data_md, weight_md, out_md, strides, dilates, padding, padding);
       auto conv_pd = mkldnn::convolution_backward_weights::primitive_desc(desc, engine, fwd_pd);
       while (conv_pd.diff_dst_desc().get_size() != GetArraySize(output) ||
              conv_pd.src_desc().get_size() != GetArraySize(data) ||
@@ -311,8 +305,7 @@ static mkldnn::convolution_backward_weights::primitive_desc GetConvBwdWeights(
       auto bias_md = GetMemDesc(*bias);
       mkldnn::convolution_backward_weights::desc desc(mkldnn::algorithm::convolution_direct,
                                                       data_md, weight_md, bias_md, out_md,
-                                                      strides, dilates, padding, padding,
-                                                      mkldnn::padding_kind::zero);
+                                                      strides, dilates, padding, padding);
       auto conv_pd = mkldnn::convolution_backward_weights::primitive_desc(desc, engine, fwd_pd);
       while (conv_pd.diff_dst_desc().get_size() != GetArraySize(output) ||
              conv_pd.src_desc().get_size() != GetArraySize(data) ||

@@ -67,8 +67,7 @@ void MKLDNNPoolingFwd::Init(const mxnet::NDArray &input, const mxnet::NDArray &o
   const mkldnn::memory::dims kernel  = {kernel_h,  kernel_w  };
   // mkldnn::pooling_forward::desc
   const auto fwd_desc = mkldnn::pooling_forward::desc(prop, alg_kind, src_md, dst_md,
-                                                      strides, kernel, pad_l, pad_r,
-                                                      mkldnn::padding_kind::zero);
+                                                      strides, kernel, pad_l, pad_r);
   this->fwd_pd_.reset(new mkldnn::pooling_forward::primitive_desc(fwd_desc, engine));
   this->data_.reset(new mkldnn::memory(input.GetMKLDNNData()->get_desc(), engine));
   this->out_.reset(new mkldnn::memory(this->fwd_pd_->dst_desc(), engine));
@@ -196,8 +195,7 @@ mkldnn::pooling_forward::primitive_desc GetPoolingFwdPdesc(
                                               {static_cast<int>(pad_t_),
                                                static_cast<int>(pad_l_)},
                                               {static_cast<int>(pad_b_),
-                                               static_cast<int>(pad_r_)},
-                                              padding_kind::zero);
+                                               static_cast<int>(pad_r_)});
   return mkldnn::pooling_forward::primitive_desc(poolingFwd_desc, engine);
 }
 
@@ -380,8 +378,7 @@ MKLDNNPoolingBwd &GetPoolingBwd(const PoolingParam &param,
 
     const pooling_backward::desc desc(
         alg, diff_in_md, diff_md, {stride_h_, stride_w_},
-        {kernel_h_, kernel_w_}, {pad_t_, pad_l_}, {pad_b_, pad_r_},
-        mkldnn::padding_kind::zero);
+        {kernel_h_, kernel_w_}, {pad_t_, pad_l_}, {pad_b_, pad_r_});
     const auto pdesc = pooling_backward::primitive_desc(desc, cpu_engine, fwd_pd);
     MKLDNNPoolingBwd bwd(pdesc, with_workspace);
     it = AddToCache(&pooling_bwds, key, bwd);
