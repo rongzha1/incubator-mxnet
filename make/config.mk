@@ -51,7 +51,7 @@ endif
 DEV = 0
 
 # whether compile with debug
-DEBUG = 1
+DEBUG = 0
 
 # whether to turn on segfault signal handler to log the stack trace
 USE_SIGNAL_HANDLER =
@@ -117,7 +117,7 @@ UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S), Darwin)
 USE_BLAS = apple
 else
-USE_BLAS = atlas
+USE_BLAS = mkl
 endif
 
 # whether use lapack during compilation

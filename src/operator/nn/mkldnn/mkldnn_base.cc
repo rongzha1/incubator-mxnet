@@ -419,14 +419,16 @@ static bool SimilarArray(const mxnet::NDArray &arr1, const mxnet::NDArray &arr2,
   DType *data2 = reinterpret_cast<DType *>(
       arr2.IsMKLDNNData() ? buf2.data().dptr_: arr2.data().dptr_);
   std::atomic<bool> success(true);
-#pragma omp parallel for
+// #pragma omp parallel for
 #ifdef _MSC_VER
   for (int64_t i = 0; i < arr1.shape().Size(); i++) {
 #else
   for (size_t i = 0; i < arr1.shape().Size(); i++) {
 #endif
-    if (std::abs(data1[i] - data2[i]) > atol + rtol * std::abs(data2[i]))
+    if (std::abs(data1[i] - data2[i]) > atol + rtol * std::abs(data2[i])) {
+      LOG(INFO) << "SimilarArray fails "<<i<<" d0: "<<data1[i] <<" d1: "<<data2[i];
       success.store(false);
+    }
   }
   return success.load();
 }
@@ -494,7 +496,7 @@ void OpCheck::Run(mxnet::FCompute fn, const nnvm::NodeAttrs &attrs,
     MSHADOW_TYPE_SWITCH(outputs[i].dtype(), DType, {
       bool similar = SimilarArray<DType>(outputs[i], outputs_[i], 1e-2, 1e-2);
       if (!similar) {
-        LOG(ERROR) << attrs.op->name << " fails";
+        LOG(ERROR) << attrs.op->name << " fails"<<" inputs i is "<<i;
       }
       CHECK(similar);
     });

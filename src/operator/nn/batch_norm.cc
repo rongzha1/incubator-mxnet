@@ -441,6 +441,10 @@ void BatchNormGradComputeExCPU(const nnvm::NodeAttrs &attrs,
     aux_states[batchnorm::kMovingMean] = inputs[6];
     aux_states[batchnorm::kMovingVar] = inputs[7];
     const std::vector<NDArray> &in_grad = outputs;
+    float *pD = (float*)inputs[0].GetMKLDNNData()->get_data_handle();
+    for(int i=0; i<10; i++) {
+        LOG(INFO)<<"bn in_data 0 is "<<pD[i];
+      }
 
     if (inputs[0].dtype() == mshadow::kFloat32) {
       MKLDNN_OPCHECK_INIT(true, outputs.size(), inputs, outputs);

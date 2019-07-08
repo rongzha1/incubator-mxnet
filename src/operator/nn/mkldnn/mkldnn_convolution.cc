@@ -612,6 +612,11 @@ void MKLDNNConvolutionBackward(const nnvm::NodeAttrs& attrs, const OpContext &ct
   full_param.mkldnn_param.Init(std::unordered_map<std::string, std::string>());
 
   auto data = inputs[conv::kData + 1];
+    float* pOut = (float*)data.GetMKLDNNData()->get_data_handle();
+    for(int i=0; i<10; i++) {
+      LOG(INFO)<<"conv pOut data is "<<pOut[i];
+    }
+
   if (data.IsView() && data.IsMKLDNNData())
     data = data.Reorder2Default();
 
