@@ -383,8 +383,6 @@ void MKLDNNBatchNormBackward(const OpContext &ctx, const BatchNormParam &param,
   const NDArray &out_mean     = out_data[batchnorm::kMean];
   const NDArray &out_var      = out_data[batchnorm::kVar];
 
-  LOG(INFO)<<"data diff gIn mm mv om ov Shape is "<<data.shape()<<diff.shape()<<gradIn.shape()<<moving_mean.shape()
-           <<moving_var.shape()<<out_mean.shape()<<out_var.shape();
   CHECK(out_mean.IsDefaultData());
   CHECK(out_var.IsDefaultData());
   CHECK(moving_mean.IsDefaultData());
@@ -392,11 +390,6 @@ void MKLDNNBatchNormBackward(const OpContext &ctx, const BatchNormParam &param,
 
   auto data_mem  = data.GetMKLDNNData();
   auto diff_mem  = diff.GetMKLDNNData();
-      float *pB4 = (float*)diff_mem->get_data_handle();
-      int size = diff.shape().Size();
-    for(int i=0; i<10; i++) {
-        LOG(INFO)<<"b4  bn in_data 0 is "<<pB4[i];
-      }
 
   // MKLDNN batchnorm should run on special layouts. If one of them isn't, we
   // should reorder them.
@@ -404,11 +397,6 @@ void MKLDNNBatchNormBackward(const OpContext &ctx, const BatchNormParam &param,
     data_mem = data.GetMKLDNNDataReorder(diff_mem->get_desc());
   else if (diff.IsDefaultData())
     diff_mem = diff.GetMKLDNNDataReorder(data_mem->get_desc());
-  MKLDNNStream::Get()->Submit();
-    pB4 =  (float*)diff_mem->get_data_handle();
-    for(int i=0; i<10; i++) {
-        LOG(INFO)<<"after  bn in_data 0 is "<<pB4[i];
-      }
 
   auto &bwd = GetBNBackward<DType>(param, ctx, data, *data_mem, diff, *diff_mem, flags);
   auto gradi_mem = const_cast<NDArray &>(gradIn).CreateMKLDNNData(data_mem->get_desc());
@@ -433,7 +421,7 @@ void MKLDNNBatchNormBackward(const OpContext &ctx, const BatchNormParam &param,
     {MKLDNN_ARG_SRC, *data_mem},
     {MKLDNN_ARG_SCALE_SHIFT, bwd.GetWeight()},
     {MKLDNN_ARG_DIFF_SCALE_SHIFT, bwd.GetGradw()},
-    {MKLDNN_ARG_DIFF_DST, (*diff.GetMKLDNNData())},
+    {MKLDNN_ARG_DIFF_DST, *diff_mem},
     {MKLDNN_ARG_DIFF_SRC, (*gradIn.GetMKLDNNData())},
   };
  
@@ -457,17 +445,6 @@ void MKLDNNBatchNormBackward(const OpContext &ctx, const BatchNormParam &param,
                             variance * minus_mom;
       }
       bwd.SetDataHandle(*data_mem, *diff_mem, out_mean, var_mem, *gradi_mem);
-      float *pD = (float*)data_mem->get_data_handle();
-      float *pDiff = (float*)diff_mem->get_data_handle();
-      float *pM = out_mean.data().dptr<float>();
-      float *pV = (float*)var_mem.get_data_handle();
-      
-      for(int i=0; i<10; i++) {
-        LOG(INFO)<<"pD data is "<<pD[i];
-        LOG(INFO)<<"pDiff is "<<pDiff[i];
-        LOG(INFO)<<"pM data is "<<pM[i];
-        LOG(INFO)<<"pV data is "<<pV[i];
-      }
     
       args.insert({MKLDNN_ARG_MEAN, *(out_mean.GetMKLDNNData())});
       args.insert({MKLDNN_ARG_VARIANCE, var_mem});
@@ -483,10 +460,6 @@ void MKLDNNBatchNormBackward(const OpContext &ctx, const BatchNormParam &param,
       MKLDNNStream::Get()->RegisterArgs(args);
       MKLDNNStream::Get()->RegisterPrim(bwd.GetBwd());
       MKLDNNStream::Get()->Submit();
-    }
-    float* pOut = (float*)gradi_mem->get_data_handle();
-    for(int i=0; i<10; i++) {
-      LOG(INFO)<<"pOut data  is "<<pOut[i];
     }
     // copy data from gradw_mem to in_grad[1] and in_grad[2]
     DType *gw_buf = reinterpret_cast<DType *>(bwd.GetGradw().get_data_handle());

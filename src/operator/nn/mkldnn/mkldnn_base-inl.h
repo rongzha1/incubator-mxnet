@@ -383,8 +383,7 @@ class MKLDNNStream {
       Cleanup();
   }
   void Cleanup() {
- //   mem_holder.clear();
-    LOG(INFO)<<"not clear for debug";
+    mem_holder.clear();
     TmpMemMgr::Get()->Reset();
   }
 };
