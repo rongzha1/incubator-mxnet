@@ -60,7 +60,6 @@ inline static unsigned _GetFlags(const std::vector<NDArray> &in_data,
   if (aux_states.size() == 2U && !is_train) {
     flags |= static_cast<int>(bn_flg::use_global_stats);
   }
-  LOG(INFO)<<"mkldnnv1.0 _GetFlags flg is "<<flags;
   return flags;
 }
 
@@ -384,6 +383,8 @@ void MKLDNNBatchNormBackward(const OpContext &ctx, const BatchNormParam &param,
   const NDArray &out_mean     = out_data[batchnorm::kMean];
   const NDArray &out_var      = out_data[batchnorm::kVar];
 
+  LOG(INFO)<<"data diff gIn mm mv om ov Shape is "<<data.shape()<<diff.shape()<<gradIn.shape()<<moving_mean.shape()
+           <<moving_var.shape()<<out_mean.shape()<<out_var.shape();
   CHECK(out_mean.IsDefaultData());
   CHECK(out_var.IsDefaultData());
   CHECK(moving_mean.IsDefaultData());

@@ -317,7 +317,6 @@ bool IsDefaultFormat(const mkldnn::memory::desc &desc) {
       }
     }
   }
-  LOG(INFO)<<"mkldnnv1.0 IsDefaultFormat return "<< rslt;
   return rslt;
 }
 
@@ -426,7 +425,6 @@ static bool SimilarArray(const mxnet::NDArray &arr1, const mxnet::NDArray &arr2,
   for (size_t i = 0; i < arr1.shape().Size(); i++) {
 #endif
     if (std::abs(data1[i] - data2[i]) > atol + rtol * std::abs(data2[i])) {
-      LOG(INFO) << "SimilarArray fails "<<i<<" d0: "<<data1[i] <<" d1: "<<data2[i];
       success.store(false);
     }
   }

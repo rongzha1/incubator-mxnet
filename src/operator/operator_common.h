@@ -563,7 +563,6 @@ class OpSignature {
      // nothing need to add
       break;
     }
-    LOG(INFO)<<"mkldnnv1.0 need to add MKLDNN format";
   }
 #endif
 

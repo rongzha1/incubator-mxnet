@@ -125,7 +125,6 @@ MKLDNNActForward &GetActForward(const ActivationParam& param,
   key.AddSign(param.act_type);
   key.AddSign(in_data);
   auto it = fwds.find(key);
-  LOG(INFO)<<"fwds size"<< fwds.size()<<" new fwd: "<< (it == fwds.end());
   if (it == fwds.end()) {
     MKLDNNActForward fwd(param, ctx.is_train, in_data, in_mem);
     it = AddToCache(&fwds, key, fwd);

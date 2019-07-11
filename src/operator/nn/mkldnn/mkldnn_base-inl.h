@@ -351,7 +351,6 @@ class MKLDNNStream {
   
   void RegisterArgs(std::unordered_map<int, mkldnn::memory> args) {
     net_args.push_back(args);
-  LOG(INFO)<<"net_args size "<<net_args.size();
   }
   
   void RegisterPrim(const mkldnn::primitive &prim) {
@@ -377,7 +376,6 @@ class MKLDNNStream {
       for(size_t i = 0; i < net.size(); i++) {
         net.at(i).execute(s, net_args.at(i));
       }
-      LOG(INFO)<<"mkldnnv1.0 Submit "<< cleanup;
       net.clear();
       net_args.clear();
     }
@@ -385,8 +383,8 @@ class MKLDNNStream {
       Cleanup();
   }
   void Cleanup() {
-//    mem_holder.clear();
-    LOG(INFO)<<" mkldnnv1.0 Cleanup not used";
+ //   mem_holder.clear();
+    LOG(INFO)<<"not clear for debug";
     TmpMemMgr::Get()->Reset();
   }
 };
@@ -448,7 +446,6 @@ static inline bool SameFormat(
       break;
     }
   }
-  LOG(INFO)<<"mkldnnv1.0 SameFormat return "<< rslt;
   return rslt;
 }
 
@@ -461,10 +458,8 @@ static inline mkldnn::memory *GetMKLDNNExact(
     const mkldnn::memory *mem, mkldnn::memory::desc desc) {
   mkldnn::memory::desc src_desc = mem->get_desc();
   if (desc == src_desc && SameFormat(desc, src_desc)) {
-    LOG(INFO)<<"mkldnnv1.0 GetMKLDNNExact return same format";
     return const_cast<mkldnn::memory *>(mem);
   } else {
-    LOG(INFO)<<"mkldnnv1.0 GetMKLDNNExact return different format";
     std::shared_ptr<mkldnn::memory> ret(new mkldnn::memory(
             desc, CpuEngine::Get()->get_engine(), mem->get_data_handle()));
     MKLDNNStream::Get()->RegisterMem(ret);
@@ -635,7 +630,6 @@ class MKLDNNMemory {
         }
       }
     }
-//    LOG(INFO)<<"mkldnnv1.0 IsMKLDNN return "<< rslt;
     return rslt;
   }
 
