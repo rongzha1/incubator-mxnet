@@ -399,11 +399,18 @@ void MKLDNNPoolingGradCompute(const OpContext &ctx, const PoolingParam &param,
   auto diff_src_mem =
       CreateMKLDNNMem(in_grad, bwd.pd.diff_src_desc(), req);
 
+  std::unordered_map<int, mkldnn::memory> args = {
+    {MKLDNN_ARG_DIFF_DST, *(out_grad.GetMKLDNNData())},
+    {MKLDNN_ARG_DIFF_SRC, *diff_src_mem.second },
+  };
+  if (workspace != nullptr) {
+    args.insert({MKLDNN_ARG_WORKSPACE, *(workspace->GetMKLDNNData())});
+  }
+
   bwd.SetNewMem(workspace, out_grad, diff_src_mem.second);
   MKLDNNStream::Get()->RegisterPrim(bwd.GetBwd());
-  MKLDNNStream::Get()->RegisterArgs({ { MKLDNN_ARG_DIFF_DST, *(out_grad.GetMKLDNNData()) },
-            { MKLDNN_ARG_DIFF_SRC, *diff_src_mem.second },
-            { MKLDNN_ARG_WORKSPACE, *(workspace->GetMKLDNNData()) } });
+  MKLDNNStream::Get()->RegisterArgs(args);
+
   CommitOutput(in_grad, diff_src_mem);
   MKLDNNStream::Get()->Submit();
 }
