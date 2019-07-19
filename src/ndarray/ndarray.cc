@@ -411,25 +411,22 @@ bool NDArray::Chunk::IsDefault() const {
 }
 
 void NDArray::Chunk::Reorder2Default() {
-#if 0
   if (mkl_mem_ == nullptr)
     return;
 
-  mkldnn_memory_format_t format = mkl_mem_->GetDefaultFormat();
-  if (format ==  mkl_mem_->GetFormat())
+  if (IsDefault())
     return;
 
-  mkldnn::memory::primitive_desc def_pd = mkl_mem_->GetPrimitiveDesc(format);
-  mkldnn_mem_ptr def_mem(new mkldnn::memory(def_pd));
+  mkldnn_format_tag_t format = mkl_mem_->GetDefaultFormat();
+  mkldnn::memory::desc def_desc = mkl_mem_->GetDesc(format);
+  mkldnn_mem_ptr def_mem(new mkldnn::memory(def_desc, CpuEngine::Get()->get_engine()));
   mkl_mem_->ReorderTo(def_mem.get());
 
-  CHECK(shandle.size >= def_pd.get_size());
-  CheckAndAlloc(def_pd.get_size());
+  CHECK(shandle.size >= def_desc.get_size());
+  CheckAndAlloc(def_desc.get_size());
   // TODO(zhengda) We need to avoid memory copy here.
-  memcpy(shandle.dptr, def_mem->get_data_handle(), def_pd.get_size());
+  memcpy(shandle.dptr, def_mem->get_data_handle(), def_desc.get_size());
   mkl_mem_ = nullptr;
-#endif
-    LOG(FATAL)<<"mkldnnv1.0 Reorder2Default";
 }
 
 void NDArray::Chunk::MKLDNNDataReorder(const mkldnn::memory::desc &desc) {
