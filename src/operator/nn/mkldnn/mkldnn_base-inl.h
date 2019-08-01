@@ -92,22 +92,22 @@ struct data_type_enum {};
 
 template <>
 struct data_type_enum<float> {
-  enum class{ type = mkldnn::memory::data_type::f32 };
+  enum class data_type { type = static_cast<int>(mkldnn::memory::data_type::f32) };
 };
 
 template <>
 struct data_type_enum<int32_t> {
-  enum class{ type = mkldnn::memory::data_type::s32 };
+  enum class data_type { type = static_cast<int>(mkldnn::memory::data_type::s32) };
 };
 
 template <>
 struct data_type_enum<int8_t> {
-  enum class{ type = mkldnn::memory::data_type::s8 };
+  enum class data_type { type = static_cast<int>(mkldnn::memory::data_type::s8) };
 };
 
 template <>
 struct data_type_enum<uint8_t> {
-  enum class{ type = mkldnn::memory::data_type::u8 };
+  enum class data_type { type = static_cast<int>(mkldnn::memory::data_type::u8) };
 };
 
 static inline bool SupportMKLDNNArray(int dtype, const mxnet::TShape &shape) {
@@ -271,7 +271,7 @@ inline static mkldnn::memory::desc GetWeightDesc(const NDArray &arr,
           static_cast<int>(arr.shape()[W])};
     }
     return mkldnn::memory::desc{tz, get_mkldnn_type(dtype), mkldnn::memory::format_tag::any};
-  }  
+  }
 }
 
 typedef std::shared_ptr<mkldnn::memory> mkldnn_mem_ptr;
@@ -348,11 +348,11 @@ class MKLDNNStream {
  public:
   static MKLDNNStream *Get();
   MKLDNNStream():s(CpuEngine::Get()->get_engine()) {}
-  
+
   void RegisterArgs(std::unordered_map<int, mkldnn::memory> args) {
     net_args.push_back(args);
   }
-  
+
   void RegisterPrim(const mkldnn::primitive &prim) {
     net.push_back(prim);
   }
@@ -419,8 +419,8 @@ static inline bool SameFormat(
                != desc_b.data.format_desc.blocking.inner_blks[i])
              &&(desc_a.data.format_desc.blocking.inner_idxs[i]
                != desc_b.data.format_desc.blocking.inner_idxs[i])) {
-            break; 
-          }  
+            break;
+          }
         }
         if(i != desc_a.data.format_desc.blocking.inner_nblks) {
               break;
@@ -608,9 +608,9 @@ class MKLDNNMemory {
   }
 
   mkldnn_format_tag_t GetFormat() const {
-#if 0  
+#if 0
     return desc.data.format;
-#endif 
+#endif
     LOG(FATAL)<<"mkldnnv1.0 GetFormat";
   }
 
@@ -700,4 +700,3 @@ bool MKLDNNStorageType(const nnvm::NodeAttrs &attrs,
 }  // namespace mxnet
 #endif
 #endif  // MXNET_OPERATOR_NN_MKLDNN_MKLDNN_BASE_INL_H_
-
