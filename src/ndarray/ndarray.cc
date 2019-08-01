@@ -1115,22 +1115,19 @@ inline void CopyFromToDnsImpl(const NDArray& from, const NDArray& to, RunContext
              && SupportMKLDNN(to.dtype(), to.shape())
              && from.ctx().dev_mask() == cpu::kDevMask
              && to.ctx().dev_mask() == cpu::kDevMask) {
-#if 0             
     // If we copy data directly, we need to make sure both NDArrays are supported
     // by MKLDNN.
     auto from_mem = from.GetMKLDNNData();
     auto to_mem = to.GetMKLDNNData();
-    if (from_mem->get_primitive_desc() == to_mem->get_primitive_desc()) {
-      size_t size = std::min(from_mem->get_primitive_desc().get_size(),
-                             to_mem->get_primitive_desc().get_size());
+    if (from_mem->get_desc() == to_mem->get_desc()) {
+      size_t size = std::min(from_mem->get_desc().get_size(),
+                             to_mem->get_desc().get_size());
       memcpy(to_mem->get_data_handle(), from_mem->get_data_handle(), size);
     } else {
       const_cast<NDArray &>(to).CopyFrom(*from_mem);
       MKLDNNStream::Get()->Submit();
     }
-#endif
-          // TODO: pd include formart, need check desc + format ? 
-          LOG(FATAL)<<"mkldnnv1.0 CopyFromToDnsImpl ";
+
   } else {
     // In this case, one of the NDArray isn't supported by MKLDNN, we need
     // to convert the MKLDNN array to the default format first and copy data

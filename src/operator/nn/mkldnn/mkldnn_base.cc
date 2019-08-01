@@ -90,7 +90,13 @@ void MKLDNNCopy(const mkldnn::memory &mem, const mkldnn::memory* this_mem) {
   if (!same_shape(this_desc, from_desc) && IsDefaultFormat(from_desc)) {
     // In this case, we can simply create a new MKLDNN memory for the required
     // shape.
-    mkldnn_mem_ptr tmp_mem(new mkldnn::memory(this_desc, mem.get_engine(), mem.get_data_handle()));
+    mkldnn::memory::dims dims(this_desc.data.dims,
+                              this_desc.data.dims + this_desc.data.ndims);
+    auto this_dtype = static_cast<mkldnn::memory::data_type>(this_desc.data.data_type);
+    mkldnn::memory::desc data_md(dims, this_dtype,
+                                 static_cast<mkldnn::memory::format_tag>(this_def_format));
+    mkldnn_mem_ptr tmp_mem(new mkldnn::memory(data_md, mem.get_engine(), mem.get_data_handle()));
+
     stream->RegisterMem(tmp_mem);
     stream->RegisterPrim(mkldnn::reorder(*tmp_mem, *this_mem));
     stream->RegisterArgs({{MKLDNN_ARG_FROM, *tmp_mem}, {MKLDNN_ARG_TO, *this_mem}});
