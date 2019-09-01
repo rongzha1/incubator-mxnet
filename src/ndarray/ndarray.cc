@@ -1615,7 +1615,6 @@ void NDArray::Save(dmlc::Stream *strm) const {
     nd_cpu = *this;
 #if MXNET_USE_MKLDNN == 1
     if (nd_cpu.IsMKLDNNData()) {
-      LOG(FATAL) << "TODO: MKL-DNN 1.0";
       nd_cpu = nd_cpu.Reorder2Default();
     }
 #endif
