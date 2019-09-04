@@ -210,7 +210,7 @@ NDArray NDArray::MKLDNNDataReshape(const mxnet::TShape &shape) const {
     // We shouldn't submit the reorder primitive here because submit will
     // be called in operators.
     mkldnn_format_tag_t format = ptr_->mkl_mem_->GetDefaultFormat();
-    // CHECK_NE(format, ptr_->mkl_mem_->GetFormat());
+    CHECK(ptr_->IsMKLDNN());
     mkldnn::memory::desc def_desc = ptr_->mkl_mem_->GetDesc(format);
     mkldnn::memory *def_mem = TmpMemMgr::Get()->Alloc(def_desc);
     MKLDNNStream *stream = MKLDNNStream::Get();
