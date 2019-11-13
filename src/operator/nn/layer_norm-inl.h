@@ -218,40 +218,6 @@ void LayerNormGradComputeGeneral(const nnvm::NodeAttrs& attrs,
   const TBlob gamma = inputs[2].reshape(new_param_shape);
   const TBlob mean = inputs[3];
   const TBlob std = inputs[4];
-
-  float *p1 = (float*)ograd.dptr_;
-for (size_t i = 0; i < 10; i++)
-{
-LOG(INFO) << i<<" ograd "<<p1[i];
-}
-  float *p2 = (float*)data.dptr_;
-for (size_t i = 0; i < 10; i++)
-{
-LOG(INFO) << i<<" data "<<p2[i];
-}
-  float *p3 = (float*)gamma.dptr_;
-for (size_t i = 0; i < 10; i++)
-{
-LOG(INFO) << i<<" gamma "<<p3[i];
-}
-  float *p4 = (float*)mean.dptr_;
-for (size_t i = 0; i < 10; i++)
-{
-LOG(INFO) << i<<" mean "<<p4[i];
-}
-  float *p5 = (float*)std.dptr_;
-for (size_t i = 0; i < 10; i++)
-{
-LOG(INFO) << i<<" std "<<p5[i];
-}
-
-
-
-
-
-
-
-
   // Prepare the necessary shapes for reduction
   mxnet::TShape red_src_shape, red_dst_shape, red_exclude_src_shape, red_exclude_dst_shape;
   BroadcastReduceShapeCompact(ograd.shape_, mean.shape_, &red_src_shape, &red_dst_shape);
