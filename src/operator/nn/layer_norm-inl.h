@@ -61,6 +61,11 @@ struct LayerNormParam : public dmlc::Parameter<LayerNormParam> {
     DMLC_DECLARE_FIELD(output_mean_var).set_default(false)
       .describe("Output the mean and std calculated along the given axis.");
   }
+  bool operator==(const LayerNormParam& other) const {
+    return this->axis == other.axis &&
+           this->eps == other.eps &&
+           this->output_mean_var == other.output_mean_var;
+  }
 };
 
 static int GetRealAxis(int axis, int ndim) {
@@ -213,6 +218,40 @@ void LayerNormGradComputeGeneral(const nnvm::NodeAttrs& attrs,
   const TBlob gamma = inputs[2].reshape(new_param_shape);
   const TBlob mean = inputs[3];
   const TBlob std = inputs[4];
+
+  float *p1 = (float*)ograd.dptr_;
+for (size_t i = 0; i < 10; i++)
+{
+LOG(INFO) << i<<" ograd "<<p1[i];
+}
+  float *p2 = (float*)data.dptr_;
+for (size_t i = 0; i < 10; i++)
+{
+LOG(INFO) << i<<" data "<<p2[i];
+}
+  float *p3 = (float*)gamma.dptr_;
+for (size_t i = 0; i < 10; i++)
+{
+LOG(INFO) << i<<" gamma "<<p3[i];
+}
+  float *p4 = (float*)mean.dptr_;
+for (size_t i = 0; i < 10; i++)
+{
+LOG(INFO) << i<<" mean "<<p4[i];
+}
+  float *p5 = (float*)std.dptr_;
+for (size_t i = 0; i < 10; i++)
+{
+LOG(INFO) << i<<" std "<<p5[i];
+}
+
+
+
+
+
+
+
+
   // Prepare the necessary shapes for reduction
   mxnet::TShape red_src_shape, red_dst_shape, red_exclude_src_shape, red_exclude_dst_shape;
   BroadcastReduceShapeCompact(ograd.shape_, mean.shape_, &red_src_shape, &red_dst_shape);
@@ -347,4 +386,19 @@ void LayerNormGradComputeGeneral(const nnvm::NodeAttrs& attrs,
 
 }  // namespace op
 }  // namespace mxnet
+
+#if MXNET_USE_MKLDNN == 1
+namespace std {
+template<>
+struct hash<mxnet::op::LayerNormParam> {
+  size_t operator()(const mxnet::op::LayerNormParam& val) {
+    size_t ret = 0;
+    ret = dmlc::HashCombine(ret, val.axis);
+    ret = dmlc::HashCombine(ret, val.eps);
+    ret = dmlc::HashCombine(ret, val.output_mean_var);
+    return ret;
+  }
+};
+}  // namespace std
+#endif
 #endif  // MXNET_OPERATOR_NN_LAYER_NORM_INL_H_

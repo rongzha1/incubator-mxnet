@@ -27,6 +27,10 @@
 #include <nnvm/op_attr_types.h>
 #include "../elemwise_op_common.h"
 
+#if MXNET_USE_MKLDNN == 1
+#include "./mkldnn/mkldnn_ops-inl.h"
+#endif
+
 #if MSHADOW_USE_MKL == 1
 #include "../mkl_functions-inl.h"
 #endif
@@ -72,6 +76,44 @@ void LayerNormCompute<cpu>(const nnvm::NodeAttrs& attrs,
                            const std::vector<TBlob>& outputs) {
   return LayerNormComputeGeneral<cpu>(attrs, ctx, inputs, req, outputs);
 }
+
+#if MXNET_USE_MKLDNN == 1
+static inline bool LayerNormStorageType(const nnvm::NodeAttrs &attrs,
+                                        const int dev_mask,
+                                        DispatchMode *dispatch_mode,
+                                        std::vector<int> *in_attrs,
+                                        std::vector<int> *out_attrs) {
+
+  bool dispatched = MKLDNNStorageType(attrs, dev_mask, true, dispatch_mode,
+                                 in_attrs, out_attrs);
+  return dispatched;
+}
+
+static inline bool SupportMKLDNNLN(const std::vector<NDArray> &inputs, const LayerNormParam &param) {
+  NDArray data = inputs[layernorm::LayerNormOpInputs::kData];
+  int dtype = data.dtype(); 
+  mxnet::TShape shape = data.shape();
+  auto ndim = shape.ndim();
+  int axis = GetRealAxis(param.axis, ndim);
+  return (dtype == mshadow::kFloat32) && (axis == ndim - 1) && (ndim > 1 && ndim < 6) 
+         && SupportStorageMKLDNN(data.storage_type());
+}
+
+void LayerNormComputeExCPU(const nnvm::NodeAttrs &attrs,
+                           const OpContext &ctx,
+                           const std::vector<NDArray> &inputs,
+                           const std::vector<OpReqType> &req,
+                           const std::vector<NDArray> &outputs) {
+  const LayerNormParam &param = nnvm::get<LayerNormParam>(attrs.parsed);
+  if (SupportMKLDNNLN(inputs, param)) {
+    MKLDNN_OPCHECK_INIT(true, outputs.size(), inputs, outputs);
+    MKLDNNLayerNormForward(attrs, ctx, inputs, req, outputs);
+    MKLDNN_OPCHECK_RUN(LayerNormCompute<cpu>, attrs, ctx, inputs, req, outputs);
+    return;
+  }
+  FallBackCompute(LayerNormCompute<cpu>, attrs, ctx, inputs, req, outputs);
+}
+#endif
 
 #if MSHADOW_USE_MKL == 1
 void LayerNormComputeMKL(const nnvm::NodeAttrs& attrs,
@@ -172,6 +214,11 @@ axis to be the last item in the input shape.
 })
 .set_attr<mxnet::FInferShape>("FInferShape", LayerNormShape)
 .set_attr<nnvm::FInferType>("FInferType", ElemwiseType<3, 3>)
+#if MXNET_USE_MKLDNN == 1
+.set_attr<FInferStorageType>("FInferStorageType", LayerNormStorageType)
+.set_attr<bool>("TIsMKLDNN", true)
+.set_attr<FComputeEx>("FComputeEx<cpu>", LayerNormComputeExCPU)
+#endif
 #if MSHADOW_USE_MKL == 1
 .set_attr<FCompute>("FCompute<cpu>", LayerNormComputeMKL)
 #else
