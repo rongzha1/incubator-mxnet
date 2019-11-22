@@ -332,19 +332,6 @@ void MKLDNNFCBackward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
       data, weight, param.no_bias ? nullptr : &in_grad[fullc::kBias], GetMemDesc(out_grad));
 
   CHECK_NE(req[fullc::kWeight], kWriteInplace) << "cannot write weight inplace";
-  if (req[fullc::kData]) {
-    mkldnn::inner_product_backward_data::primitive_desc ipBwdData_pd = GetFCBwdData(
-        data, weight, out_grad, fwd_pd);
-    auto out_grad_mem = out_grad.GetMKLDNNDataReorder(
-        ipBwdData_pd.diff_dst_primitive_desc());
-    auto weight_mem = weight.GetMKLDNNDataReorder(ipBwdData_pd.weights_primitive_desc());
-    auto in_grad_mem = CreateMKLDNNMem(in_grad[fullc::kData],
-                                       ipBwdData_pd.diff_src_primitive_desc(),
-                                       req[fullc::kData]);
-    MKLDNNStream::Get()->RegisterPrim(mkldnn::inner_product_backward_data(
-          ipBwdData_pd, *out_grad_mem, *weight_mem, *in_grad_mem.second));
-    CommitOutput(in_grad[fullc::kData], in_grad_mem);
-  }
   if (req[fullc::kWeight]) {
     mkldnn::inner_product_backward_weights::primitive_desc ipBwdWeights_pd
       = GetFCBwdWeights(data, weight, param.no_bias ? nullptr : &in_grad[fullc::kBias],
@@ -369,6 +356,19 @@ void MKLDNNFCBackward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
     }
     CommitOutput(in_grad[fullc::kWeight], in_grad_weight);
     CommitOutput(in_grad[fullc::kBias], in_grad_bias);
+  }
+  if (req[fullc::kData]) {
+    mkldnn::inner_product_backward_data::primitive_desc ipBwdData_pd = GetFCBwdData(
+        data, weight, out_grad, fwd_pd);
+    auto out_grad_mem = out_grad.GetMKLDNNDataReorder(
+        ipBwdData_pd.diff_dst_primitive_desc());
+    auto weight_mem = weight.GetMKLDNNDataReorder(ipBwdData_pd.weights_primitive_desc());
+    auto in_grad_mem = CreateMKLDNNMem(in_grad[fullc::kData],
+                                       ipBwdData_pd.diff_src_primitive_desc(),
+                                       req[fullc::kData]);
+    MKLDNNStream::Get()->RegisterPrim(mkldnn::inner_product_backward_data(
+          ipBwdData_pd, *out_grad_mem, *weight_mem, *in_grad_mem.second));
+    CommitOutput(in_grad[fullc::kData], in_grad_mem);
   }
   MKLDNNStream::Get()->Submit();
 }
