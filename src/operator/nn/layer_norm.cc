@@ -77,6 +77,14 @@ void LayerNormCompute<cpu>(const nnvm::NodeAttrs& attrs,
   return LayerNormComputeGeneral<cpu>(attrs, ctx, inputs, req, outputs);
 }
 
+template<>
+void LayerNormGradCompute<cpu>(const nnvm::NodeAttrs& attrs,
+                               const OpContext& ctx, const std::vector<TBlob>& inputs,
+                               const std::vector<OpReqType>& req,
+                               const std::vector<TBlob>& outputs) {
+  return LayerNormGradComputeGeneral<cpu>(attrs, ctx, inputs, req, outputs);
+}
+
 #if MXNET_USE_MKLDNN == 1
 static inline bool LayerNormStorageType(const nnvm::NodeAttrs &attrs,
                                         const int dev_mask,
@@ -112,6 +120,21 @@ void LayerNormComputeExCPU(const nnvm::NodeAttrs &attrs,
     return;
   }
   FallBackCompute(LayerNormCompute<cpu>, attrs, ctx, inputs, req, outputs);
+}
+
+void LayerNormGradComputeExCPU(const nnvm::NodeAttrs &attrs,
+                               const OpContext &ctx,
+                               const std::vector<NDArray> &inputs,
+                               const std::vector<OpReqType> &req,
+                               const std::vector<NDArray> &outputs) {
+  const LayerNormParam &param = nnvm::get<LayerNormParam>(attrs.parsed);
+  if (SupportMKLDNNLN(inputs, param)) {
+    MKLDNN_OPCHECK_INIT(true, outputs.size(), inputs, outputs);
+    MKLDNNLayerNormBackward(attrs, ctx, inputs, req, outputs);
+    MKLDNN_OPCHECK_RUN(LayerNormGradCompute<cpu>, attrs, ctx, inputs, req, outputs);
+    return;
+  }
+  FallBackCompute(LayerNormGradCompute<cpu>, attrs, ctx, inputs, req, outputs);
 }
 #endif
 
@@ -158,15 +181,6 @@ void LayerNormComputeMKL(const nnvm::NodeAttrs& attrs,
   }
 }
 #endif
-
-
-template<>
-void LayerNormGradCompute<cpu>(const nnvm::NodeAttrs& attrs,
-                               const OpContext& ctx, const std::vector<TBlob>& inputs,
-                               const std::vector<OpReqType>& req,
-                               const std::vector<TBlob>& outputs) {
-  return LayerNormGradComputeGeneral<cpu>(attrs, ctx, inputs, req, outputs);
-}
 
 NNVM_REGISTER_OP(LayerNorm)
 .add_alias("_npx_layer_norm")
@@ -234,10 +248,10 @@ axis to be the last item in the input shape.
   heads.emplace_back(n, 2, 0);  // std
   return MakeGradNode("_backward_LayerNorm", n, heads, n->attrs.dict);
 })
-.set_attr<nnvm::FInplaceOption>("FInplaceOption",
-  [](const NodeAttrs& attrs) {
-  return std::vector<std::pair<int, int> >{{0, 0}};
-})
+//.set_attr<nnvm::FInplaceOption>("FInplaceOption",
+//  [](const NodeAttrs& attrs) {
+//  return std::vector<std::pair<int, int> >{{0, 0}};
+//})
 .set_attr<FResourceRequest>("FResourceRequest", [](const NodeAttrs& n) {
   return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
 })
@@ -253,6 +267,11 @@ NNVM_REGISTER_OP(_backward_LayerNorm)
 .set_num_outputs(3)
 .set_attr<nnvm::TIsBackward>("TIsBackward", true)
 .set_attr_parser(ParamParser<LayerNormParam>)
+#if MXNET_USE_MKLDNN == 1
+.set_attr<FInferStorageType>("FInferStorageType", LayerNormStorageType)
+.set_attr<bool>("TIsMKLDNN", true)
+.set_attr<FComputeEx>("FComputeEx<cpu>", LayerNormGradComputeExCPU)
+#endif
 .set_attr<FCompute>("FCompute<cpu>", LayerNormGradCompute<cpu>)
 .set_attr<FResourceRequest>("FResourceRequest", [](const NodeAttrs& n) {
   return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};

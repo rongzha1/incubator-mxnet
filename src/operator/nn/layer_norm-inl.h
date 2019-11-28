@@ -218,6 +218,27 @@ void LayerNormGradComputeGeneral(const nnvm::NodeAttrs& attrs,
   const TBlob gamma = inputs[2].reshape(new_param_shape);
   const TBlob mean = inputs[3];
   const TBlob std = inputs[4];
+
+
+  float *p1 = (float*)inputs[0].dptr_;
+  float *p2 = (float*)inputs[1].dptr_;
+  float *p3 = (float*)inputs[2].dptr_;
+  float *p4 = (float*)inputs[3].dptr_;
+  float *p5 = (float*)inputs[4].dptr_;
+  LOG(INFO) << " gama shape and new shape " <<inputs[2].shape_ << " "<<new_param_shape;
+for (size_t i = 0; i < 10; i++)
+{
+LOG(INFO) << i<<" pdata "<<p2[i];
+LOG(INFO) << i<<" ograd "<<p1[i];
+}
+for (size_t i = 0; i < 5; i++)
+{
+LOG(INFO) << i<<" gamma "<<p3[i];
+LOG(INFO) << i<<" mean "<<p4[i];
+LOG(INFO) << i<<" std "<<p5[i];
+
+}
+
   // Prepare the necessary shapes for reduction
   mxnet::TShape red_src_shape, red_dst_shape, red_exclude_src_shape, red_exclude_dst_shape;
   BroadcastReduceShapeCompact(ograd.shape_, mean.shape_, &red_src_shape, &red_dst_shape);
@@ -260,6 +281,12 @@ void LayerNormGradComputeGeneral(const nnvm::NodeAttrs& attrs,
   BinaryBroadcastCompute<xpu, mshadow_op::minus>(attrs, ctx,
                                                  {data, mean},
                                                  {kWriteTo}, {normalized_data});
+  float *pN = (float*)normalized_data.dptr_;                                           
+  for (size_t i = 0; i < 6; i++)
+  {
+    LOG(INFO) << i<<" normalized_data "<<pN[i];
+  }
+  
   BinaryBroadcastCompute<xpu, mshadow_op::div>(attrs, ctx,
                                                {normalized_data, std},
                                                {kWriteTo}, {normalized_data});
@@ -348,6 +375,20 @@ void LayerNormGradComputeGeneral(const nnvm::NodeAttrs& attrs,
                                                  {normalized_data, red_out},
                                                  {kAddTo}, {outputs[0]});
   }
+
+  float *pdata = (float*)outputs[0].dptr_;
+  float *pgamma = (float*)outputs[1].dptr_;
+  float *pbeta = (float*)outputs[2].dptr_;
+for (size_t i = 0; i < 10; i++)
+{
+LOG(INFO) << i<<" pdata "<<pdata[i];
+}
+for (size_t i = 0; i < 5; i++)
+{
+LOG(INFO) << i<<" pgamma "<<pgamma[i];
+LOG(INFO) << i<<" pbeta "<<pbeta[i];
+}
+
 }
 
 }  // namespace op

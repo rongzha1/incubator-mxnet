@@ -30,7 +30,7 @@ namespace op {
 
 typedef ParamOpSign<LayerNormParam> MKLDNNLayerNormSignature;
 const static bool always_output_mean_var(true);
-static mkldnn::layer_normalization_forward::primitive_desc GetLayerNormFwdDescImpl(
+static mkldnn::layer_normalization_forward::primitive_desc _GetFwd(
                const LayerNormParam& param, bool is_train,
                const mkldnn::memory &input_mem) {
   mkldnn::memory::desc data_md = input_mem.get_desc();
@@ -55,7 +55,7 @@ class MKLDNNLayerNormFwd {
 
   MKLDNNLayerNormFwd(const LayerNormParam& param, bool is_train,
                          const int axis, const mkldnn::memory &mem): fwd_pd(
-                         GetLayerNormFwdDescImpl(param, is_train, mem)) {
+                         _GetFwd(param, is_train, mem)) {
     weight_m.reset(new mkldnn::memory(fwd_pd.weights_desc(), CpuEngine::Get()->get_engine()));
     if (is_train || param.output_mean_var || always_output_mean_var) {
       mean_m.reset(new mkldnn::memory(fwd_pd.mean_desc(), CpuEngine::Get()->get_engine()));
@@ -178,6 +178,9 @@ void MKLDNNLayerNormForward(const nnvm::NodeAttrs& attrs,
 
     size_t size = out_data[layernorm::kStd].shape().Size();
     float* pVar =  static_cast<float*>(out_data[layernorm::kStd].GetMKLDNNData()->get_data_handle());
+#if !defined(_MSC_VER)
+#pragma omp simd
+#endif
     for (size_t i = 0; i < size; i++)
     {
       pVar[i] = math::sqrt( pVar[i] + param.eps);
@@ -185,6 +188,203 @@ void MKLDNNLayerNormForward(const nnvm::NodeAttrs& attrs,
     
   }
 }
+
+class MKLDNNLayerNormBwd {
+  std::shared_ptr<mkldnn::layer_normalization_backward> bwd;
+  const std::shared_ptr<mkldnn::memory> weight_m;
+  const std::shared_ptr<mkldnn::memory> gradw_m;
+
+ public:
+  const mkldnn::layer_normalization_backward::primitive_desc bwd_pd;
+  const mkldnn::layer_normalization_forward::primitive_desc fwd_pd;
+
+  explicit MKLDNNLayerNormBwd(const mkldnn::layer_normalization_backward::primitive_desc &_bwd_pd,
+                              const mkldnn::layer_normalization_forward::primitive_desc &_fwd_pd)
+      : weight_m(new mkldnn::memory(_bwd_pd.weights_desc(), CpuEngine::Get()->get_engine())),
+        gradw_m(new mkldnn::memory(_bwd_pd.diff_weights_desc(), CpuEngine::Get()->get_engine())),
+        bwd_pd(_bwd_pd),
+        fwd_pd(_fwd_pd) {
+    bwd.reset(new mkldnn::layer_normalization_backward(_bwd_pd));
+  }
+
+  const mkldnn::memory &GetWeight() const { return *weight_m; }
+
+  const mkldnn::memory &GetGradw() const { return *gradw_m; }
+
+  const mkldnn::layer_normalization_backward &GetBwd() const { return *bwd; }
+};
+
+inline static mkldnn::layer_normalization_backward::primitive_desc _GetBwd(
+                                   const LayerNormParam &param,
+                                   const mkldnn::memory &data_mem,
+                                   const mkldnn::memory &diff_mem,
+                                   mkldnn::layer_normalization_forward::primitive_desc& fwd_pd) {
+  auto data_md    = data_mem.get_desc();
+  auto diff_md    = diff_mem.get_desc();
+  auto engine     = CpuEngine::Get()->get_engine();
+
+  mkldnn::layer_normalization_backward::desc  lnBwd_desc(
+                                mkldnn::prop_kind::backward,
+                                diff_md,
+                                data_md,
+                                param.eps,
+                                mkldnn::normalization_flags::use_scale_shift);
+  fwd_pd = _GetFwd(param, true, data_mem);                              
+  return mkldnn::layer_normalization_backward::primitive_desc(lnBwd_desc,
+                                                              engine,
+                                                              fwd_pd);
+}
+
+static MKLDNNLayerNormBwd &GetLNBackward(
+    const LayerNormParam &param, const OpContext &ctx, const NDArray &in_data,
+    const mkldnn::memory &in_mem, const NDArray &diff_data,
+    const mkldnn::memory &diff_mem) {
+#if DMLC_CXX11_THREAD_LOCAL
+  static thread_local std::unordered_map<MKLDNNLayerNormSignature, MKLDNNLayerNormBwd, OpHash> bwds;
+#else
+  static MX_THREAD_LOCAL std::unordered_map<MKLDNNLayerNormSignature, MKLDNNLayerNormBwd, OpHash> bwds;
+#endif
+  MKLDNNLayerNormSignature key(param);
+  key.AddSign(in_data);
+  key.AddSign(diff_data);
+
+  auto it = bwds.find(key);
+  if (it == bwds.end()) {
+    mkldnn::layer_normalization_forward::primitive_desc fwd_pd;
+    auto bwd_pd = _GetBwd(param, in_mem, diff_mem, fwd_pd);
+    MKLDNNLayerNormBwd bwd(bwd_pd, fwd_pd);
+    it = AddToCache(&bwds, key, bwd);
+  }
+  return it->second;
+}
+
+void MKLDNNLayerNormBackward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
+                             const std::vector<NDArray> &inputs,
+                             const std::vector<OpReqType> &req,
+                             const std::vector<NDArray> &outputs) {
+  const LayerNormParam &param = nnvm::get<LayerNormParam>(attrs.parsed);
+  // inputs order: ograd , data, gamma, mean, var
+  size_t offset = 0;
+  const NDArray &diff = inputs[offset++];
+  const NDArray &data = inputs[offset++];
+  const NDArray &gamma = inputs[offset++];
+  const NDArray &mean = inputs[offset++];
+  const NDArray &var = inputs[offset++];
+
+  offset = 0;
+  const NDArray &grad_data = outputs[offset++];
+  const NDArray &grad_gamma = outputs[offset++];
+  const NDArray &grad_beta = outputs[offset++];
+  LOG(INFO) <<" diff shape is "<<diff.shape() <<" data "<<data.shape()<<" gamma "<< gamma.shape()
+  <<" mean "<<mean.shape()<< " var " << var.shape()<<" grad_data "<<grad_data.shape()<<" grad_gamma "<<grad_gamma.shape();
+  auto data_mem  = data.GetMKLDNNData();
+  auto diff_mem  = diff.GetMKLDNNData();
+
+  float* p1 = (float*)diff.GetMKLDNNData()->get_data_handle();
+  float* p2 = (float*)data.GetMKLDNNData()->get_data_handle();
+  float* p3 = (float*)gamma.GetMKLDNNData()->get_data_handle();
+  float* p4 = (float*)mean.GetMKLDNNData()->get_data_handle();
+  float* p5 = (float*)var.GetMKLDNNData()->get_data_handle();
+
+  for (size_t i = 0; i < 10; i++)
+  {
+    LOG(INFO) << i<<" data " <<p2[i];
+    LOG(INFO) << i<<" Ograd " <<p1[i];
+  }
+  
+  for (size_t i = 0; i < 5; i++)
+  {
+    LOG(INFO) << i<<" gamma " <<p3[i];
+    LOG(INFO) << i<<" mean " <<p4[i];
+    LOG(INFO) << i<<" var " <<p5[i];
+  }
+  
+  // MKLDNN batchnorm should run on special layouts. If one of them isn't, we
+  // should reorder them.
+  // if (data.IsDefaultData())
+  //   data_mem = data.GetMKLDNNDataReorder(diff_mem->get_desc());
+  // else if (diff.IsDefaultData())
+  //   diff_mem = diff.GetMKLDNNDataReorder(data_mem->get_desc());
+
+  auto &bwd = GetLNBackward(param, ctx, data, *data_mem, diff, *diff_mem);
+  auto gradi_mem = const_cast<NDArray &>(grad_data).CreateMKLDNNData(data_mem->get_desc());
+
+  
+  float *weight_buf = reinterpret_cast<float *>(bwd.GetWeight().get_data_handle());
+  nnvm::dim_t channels_ = gamma.shape()[0];
+  for (int i = 0; i < channels_; i++) {
+    weight_buf[i] = (gamma.data().dptr<float>())[i];   // weight
+  }
+  for (int i = 0; i < channels_; i++) {
+    weight_buf[channels_ + i] = 0;  // no input bias in layer norm
+  }
+
+  size_t size = var.shape().Size();
+  float* pVar =  static_cast<float*>(var.GetMKLDNNData()->get_data_handle());
+    for (size_t i = 0; i < size; i++)
+    {
+      pVar[i] = pVar[i]*pVar[i] - param.eps;
+    }
+  // auto mean_mem = const_cast<NDArray &>(mean).CreateMKLDNNData(bwd.fwd_pd.mean_desc());
+  // auto var_mem = const_cast<NDArray &>(var).CreateMKLDNNData(bwd.fwd_pd.variance_desc());
+
+    mkldnn::stream s(CpuEngine::Get()->get_engine());
+    
+    mkldnn::memory def_mean_mem(bwd.fwd_pd.mean_desc(), CpuEngine::Get()->get_engine());
+    mxnet::TShape tshape(mean.shape().ndim()-1, -1);
+    for (int i = 0; i < mean.shape().ndim() - 1; i++) {
+      tshape[i] = mean.shape()[i];
+    }
+
+    // auto mean_mem = mean.MKLDNNDataReshape(tshape);
+    auto mean_mem = const_cast<mkldnn::memory*>(mean.MKLDNNDataReshape(tshape).GetMKLDNNData());
+    mkldnn::reorder reorder(*mean_mem, def_mean_mem);
+    reorder.execute(s, *mean_mem,  def_mean_mem);
+
+    mkldnn::memory def_var_mem(bwd.fwd_pd.variance_desc(), CpuEngine::Get()->get_engine());
+    auto var_mem =  const_cast<mkldnn::memory*>(var.MKLDNNDataReshape(tshape).GetMKLDNNData());
+    reorder.execute(s, *var_mem,  def_var_mem);
+
+
+  float *pW = (float*)(bwd.GetWeight().get_data_handle());
+for (size_t i = 0; i < channels_*2; i++)
+{
+LOG(INFO) <<i<<" out weight is  "<< pW[i];
+}
+
+  mkldnn_args_map_t net_args;
+  net_args[MKLDNN_ARG_SRC] = *data_mem;
+  net_args[MKLDNN_ARG_DIFF_SRC] = *gradi_mem;
+  net_args[MKLDNN_ARG_SCALE_SHIFT] = bwd.GetWeight();
+  net_args[MKLDNN_ARG_DIFF_SCALE_SHIFT] = bwd.GetGradw();
+  net_args[MKLDNN_ARG_DIFF_DST] = *diff_mem;
+  net_args[MKLDNN_ARG_MEAN] = def_mean_mem;
+  net_args[MKLDNN_ARG_VARIANCE] = def_var_mem;
+  // training but no input mean and variance
+
+  MKLDNNStream::Get()->RegisterPrimArgs(bwd.GetBwd(), net_args);
+  MKLDNNStream::Get()->Submit();
+
+  // copy data from gradw_mem to output[1] and output[2]
+  float *gw_buf = reinterpret_cast<float *>(bwd.GetGradw().get_data_handle());
+  for (int i = 0; i < channels_; i++) {
+    (grad_gamma.data().dptr<float>())[i] = gw_buf[i];
+    LOG(INFO) <<i<< " gamma "<< (grad_gamma.data().dptr<float>())[i];
+  }
+
+  for (int i = 0; i < channels_; i++) {
+    (grad_beta.data().dptr<float>())[i] = gw_buf[i + channels_];
+    LOG(INFO) <<i<< " beta "<< (grad_beta.data().dptr<float>())[i];
+  }
+
+float *pOut_data = (float*)outputs[0].GetMKLDNNData()->get_data_handle();
+for (size_t i = 0; i < 10; i++)
+{
+LOG(INFO) <<i<<" out_data "<< pOut_data[i];
+}
+
+}
+
 }   // namespace op
 }   // namespace mxnet
 #endif
