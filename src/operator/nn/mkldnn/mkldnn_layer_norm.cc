@@ -307,7 +307,7 @@ void MKLDNNLayerNormBackward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
   //   diff_mem = diff.GetMKLDNNDataReorder(data_mem->get_desc());
 
   auto &bwd = GetLNBackward(param, ctx, data, *data_mem, diff, *diff_mem);
-  auto gradi_mem = const_cast<NDArray &>(grad_data).CreateMKLDNNData(data_mem->get_desc());
+//  auto gradi_mem = const_cast<NDArray &>(grad_data).CreateMKLDNNData(data_mem->get_desc());
 
   
   float *weight_buf = reinterpret_cast<float *>(bwd.GetWeight().get_data_handle());
@@ -351,10 +351,12 @@ for (size_t i = 0; i < channels_*2; i++)
 {
 LOG(INFO) <<i<<" out weight is  "<< pW[i];
 }
+  auto gradi_mem = CreateMKLDNNMem(outputs[layernorm::kOut],
+                                 bwd.bwd_pd.diff_src_desc(), req[layernorm::kOut]);
 
   mkldnn_args_map_t net_args;
   net_args[MKLDNN_ARG_SRC] = *data_mem;
-  net_args[MKLDNN_ARG_DIFF_SRC] = *gradi_mem;
+  net_args[MKLDNN_ARG_DIFF_SRC] = *gradi_mem.second;
   net_args[MKLDNN_ARG_SCALE_SHIFT] = bwd.GetWeight();
   net_args[MKLDNN_ARG_DIFF_SCALE_SHIFT] = bwd.GetGradw();
   net_args[MKLDNN_ARG_DIFF_DST] = *diff_mem;
@@ -363,20 +365,34 @@ LOG(INFO) <<i<<" out weight is  "<< pW[i];
   // training but no input mean and variance
 
   MKLDNNStream::Get()->RegisterPrimArgs(bwd.GetBwd(), net_args);
+  CommitOutput(outputs[layernorm::kOut], gradi_mem);
   MKLDNNStream::Get()->Submit();
 
   // copy data from gradw_mem to output[1] and output[2]
   float *gw_buf = reinterpret_cast<float *>(bwd.GetGradw().get_data_handle());
+  if(req[layernorm::kGamma] == kAddTo) {
+  for (int i = 0; i < channels_; i++) {
+    (grad_gamma.data().dptr<float>())[i] += gw_buf[i];
+    LOG(INFO) <<i<< " gamma addto "<< (grad_gamma.data().dptr<float>())[i];
+  }
+  } else {
   for (int i = 0; i < channels_; i++) {
     (grad_gamma.data().dptr<float>())[i] = gw_buf[i];
     LOG(INFO) <<i<< " gamma "<< (grad_gamma.data().dptr<float>())[i];
   }
+  }
 
+  if(req[layernorm::kGamma] == kAddTo) {
+  for (int i = 0; i < channels_; i++) {
+    (grad_beta.data().dptr<float>())[i] += gw_buf[i + channels_];
+    LOG(INFO) <<i<< " beta "<< (grad_beta.data().dptr<float>())[i];
+  }
+  } else {
   for (int i = 0; i < channels_; i++) {
     (grad_beta.data().dptr<float>())[i] = gw_buf[i + channels_];
     LOG(INFO) <<i<< " beta "<< (grad_beta.data().dptr<float>())[i];
   }
-
+  }
 float *pOut_data = (float*)outputs[0].GetMKLDNNData()->get_data_handle();
 for (size_t i = 0; i < 10; i++)
 {
