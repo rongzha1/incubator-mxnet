@@ -365,6 +365,30 @@ inline bool ContainsStorageType(const std::vector<int>& ndstypes,
   return false;
 }
 
+inline std::string dtype_string(const int dtype) {
+  switch (dtype) {
+    case mshadow::kFloat32:
+      return "float";
+    case mshadow::kFloat64:
+      return "double";
+    case mshadow::kFloat16:
+      return "half";
+    case mshadow::kUint8:
+      return "unsigned char";
+    case mshadow::kInt8:
+      return "char";
+    case mshadow::kInt32:
+      return "int";
+    case mshadow::kInt64:
+      return "long long";
+    case mshadow::kBool:
+      return "bool";
+    default:
+      LOG(FATAL) << "Unknown type enum " << dtype;
+  }
+  return "unknown";
+}
+
 /*! \brief get string representation of dispatch_mode */
 inline std::string dispatch_mode_string(const DispatchMode x) {
   switch (x) {
@@ -411,6 +435,15 @@ inline std::string dev_type_string(const int dev_type) {
   return "unknown";
 }
 
+inline std::string attr_value_string(const nnvm::NodeAttrs& attrs,
+                                     const std::string& attr_name,
+                                     std::string default_val = "") {
+  if (attrs.dict.find(attr_name) == attrs.dict.end()) {
+    return default_val;
+  }
+  return attrs.dict.at(attr_name);
+}
+
 /*! \brief get string representation of the operator stypes */
 inline std::string operator_stype_string(const nnvm::NodeAttrs& attrs,
                                          const int dev_mask,
@@ -439,10 +472,10 @@ inline std::string operator_stype_string(const nnvm::NodeAttrs& attrs,
 
 /*! \brief get string representation of the operator */
 inline std::string operator_string(const nnvm::NodeAttrs& attrs,
-                                  const OpContext& ctx,
-                                  const std::vector<NDArray>& inputs,
-                                  const std::vector<OpReqType>& req,
-                                  const std::vector<NDArray>& outputs) {
+                                   const OpContext& ctx,
+                                   const std::vector<NDArray>& inputs,
+                                   const std::vector<OpReqType>& req,
+                                   const std::vector<NDArray>& outputs) {
   std::string result = "";
   std::vector<int> in_stypes;
   std::vector<int> out_stypes;
@@ -842,7 +875,7 @@ inline bool is_float(const int dtype) {
   return dtype == mshadow::kFloat32 || dtype == mshadow::kFloat64 || dtype == mshadow::kFloat16;
 }
 
-inline int more_precise_type(const int type1, const int type2) {
+inline int get_more_precise_type(const int type1, const int type2) {
   if (type1 == type2) return type1;
   if (is_float(type1) && is_float(type2)) {
     if (type1 == mshadow::kFloat64 || type2 == mshadow::kFloat64) {
@@ -870,12 +903,12 @@ inline int more_precise_type(const int type1, const int type2) {
   return mshadow::kInt8;
 }
 
-inline int np_binary_out_type(const int type1, const int type2) {
+inline int np_binary_out_infer_type(const int type1, const int type2) {
   if ((type1 == mshadow::kUint8 && type2 == mshadow::kInt8) ||
       (type1 == mshadow::kInt8 && type2 == mshadow::kUint8)) {
     return mshadow::kInt32;
   }
-  return more_precise_type(type1, type2);
+  return get_more_precise_type(type1, type2);
 }
 
 }  // namespace common
