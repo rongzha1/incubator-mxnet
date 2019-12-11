@@ -64,6 +64,7 @@ static bool LayerNormShape(const nnvm::NodeAttrs& attrs,
   out_shape->push_back(dshape);                // kOut
   mxnet::TShape moments_shape(dshape.begin(), dshape.end());
   moments_shape[axis] = 1;
+  LOG(INFO) <<"forward mean shape is "<< moments_shape;
   out_shape->push_back(moments_shape);  // kMean
   out_shape->push_back(moments_shape);  // kInvstd
   return true;

@@ -52,7 +52,7 @@ class MKLDNNLayerNormFwd {
   std::shared_ptr<mkldnn::layer_normalization_forward> fwd_;
  public:
   const mkldnn::layer_normalization_forward::primitive_desc fwd_pd;
-
+ 
   MKLDNNLayerNormFwd(const LayerNormParam& param, bool is_train,
                          const int axis, const mkldnn::memory &mem): fwd_pd(
                          _GetFwd(param, is_train, mem)) {
@@ -279,7 +279,7 @@ void MKLDNNLayerNormBackward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
   <<" mean "<<mean.shape()<< " var " << var.shape()<<" grad_data "<<grad_data.shape()<<" grad_gamma "<<grad_gamma.shape();
   auto data_mem  = data.GetMKLDNNData();
   auto diff_mem  = diff.GetMKLDNNData();
-
+#if 0
   float* p1 = (float*)diff.GetMKLDNNData()->get_data_handle();
   float* p2 = (float*)data.GetMKLDNNData()->get_data_handle();
   float* p3 = (float*)gamma.GetMKLDNNData()->get_data_handle();
@@ -298,7 +298,7 @@ void MKLDNNLayerNormBackward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
     LOG(INFO) << i<<" mean " <<p4[i];
     LOG(INFO) << i<<" var " <<p5[i];
   }
-  
+#endif  
   // MKLDNN batchnorm should run on special layouts. If one of them isn't, we
   // should reorder them.
   // if (data.IsDefaultData())
@@ -345,12 +345,14 @@ void MKLDNNLayerNormBackward(const nnvm::NodeAttrs& attrs, const OpContext &ctx,
     auto var_mem =  const_cast<mkldnn::memory*>(var.MKLDNNDataReshape(tshape).GetMKLDNNData());
     reorder.execute(s, *var_mem,  def_var_mem);
 
-
+#if 0
   float *pW = (float*)(bwd.GetWeight().get_data_handle());
 for (size_t i = 0; i < channels_*2; i++)
 {
 LOG(INFO) <<i<<" out weight is  "<< pW[i];
 }
+#endif
+
   auto gradi_mem = CreateMKLDNNMem(outputs[layernorm::kOut],
                                  bwd.bwd_pd.diff_src_desc(), req[layernorm::kOut]);
 
@@ -373,32 +375,33 @@ LOG(INFO) <<i<<" out weight is  "<< pW[i];
   if(req[layernorm::kGamma] == kAddTo) {
   for (int i = 0; i < channels_; i++) {
     (grad_gamma.data().dptr<float>())[i] += gw_buf[i];
-    LOG(INFO) <<i<< " gamma addto "<< (grad_gamma.data().dptr<float>())[i];
+//    LOG(INFO) <<i<< " gamma addto "<< (grad_gamma.data().dptr<float>())[i];
   }
   } else {
   for (int i = 0; i < channels_; i++) {
     (grad_gamma.data().dptr<float>())[i] = gw_buf[i];
-    LOG(INFO) <<i<< " gamma "<< (grad_gamma.data().dptr<float>())[i];
+//    LOG(INFO) <<i<< " gamma "<< (grad_gamma.data().dptr<float>())[i];
   }
   }
 
   if(req[layernorm::kGamma] == kAddTo) {
   for (int i = 0; i < channels_; i++) {
     (grad_beta.data().dptr<float>())[i] += gw_buf[i + channels_];
-    LOG(INFO) <<i<< " beta "<< (grad_beta.data().dptr<float>())[i];
+//    LOG(INFO) <<i<< " beta "<< (grad_beta.data().dptr<float>())[i];
   }
   } else {
   for (int i = 0; i < channels_; i++) {
     (grad_beta.data().dptr<float>())[i] = gw_buf[i + channels_];
-    LOG(INFO) <<i<< " beta "<< (grad_beta.data().dptr<float>())[i];
+//    LOG(INFO) <<i<< " beta "<< (grad_beta.data().dptr<float>())[i];
   }
   }
+#if 0
 float *pOut_data = (float*)outputs[0].GetMKLDNNData()->get_data_handle();
 for (size_t i = 0; i < 10; i++)
 {
 LOG(INFO) <<i<<" out_data "<< pOut_data[i];
 }
-
+#endif
 }
 
 }   // namespace op
