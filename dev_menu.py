@@ -19,7 +19,7 @@
 
 # -*- coding: utf-8 -*-
 """Tool to ease working with the build system and reproducing test results"""
-
+  
 import argparse
 import os
 import sys
